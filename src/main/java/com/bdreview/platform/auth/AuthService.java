@@ -1,5 +1,6 @@
 package com.bdreview.platform.auth;
 
+import com.bdreview.platform.accountlink.AccountLinkService;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PhoneNumberUtils;
@@ -15,12 +16,20 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Handles registration, phone+password login, password reset, and
  * token issuance/rotation per spec §5. Registration and password reset both
  * delegate phone-ownership proof to otp.OtpService; plain login needs no OTP.
+ *
+ * <p>Consumer and business-owner are two genuinely separate accounts (spec
+ * update: two-account model, mirroring Yelp's yelp.com vs biz.yelp.com) — a
+ * phone number can back at most one CONSUMER row and one BUSINESS_OWNER row
+ * (see V17 migration's {@code UNIQUE(phone_number, role)}), optionally
+ * paired via {@code accountlink.AccountLink} for a frictionless
+ * {@link #switchAccount}.
  */
 @Service
 public class AuthService {
@@ -33,6 +42,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
+    private final AccountLinkService accountLinkService;
     private final long accessTokenTtlMinutes;
     private final long refreshTokenTtlDays;
 
@@ -41,6 +51,7 @@ public class AuthService {
                         JwtService jwtService,
                         OtpService otpService,
                         PasswordEncoder passwordEncoder,
+                        AccountLinkService accountLinkService,
                         @Value("${app.jwt.access-token-ttl-minutes}") long accessTokenTtlMinutes,
                         @Value("${app.jwt.refresh-token-ttl-days}") long refreshTokenTtlDays) {
         this.userRepository = userRepository;
@@ -48,6 +59,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
+        this.accountLinkService = accountLinkService;
         this.accessTokenTtlMinutes = accessTokenTtlMinutes;
         this.refreshTokenTtlDays = refreshTokenTtlDays;
     }
@@ -55,7 +67,10 @@ public class AuthService {
     /**
      * Creates a new account. Requires a phone number to have just cleared
      * OTP verification (spec §6) and a role other than ADMIN (§5: admin
-     * accounts cannot be self-registered). Auto-logs-in on success.
+     * accounts cannot be self-registered). Auto-logs-in on success. Scoped
+     * by role, not just phone — a phone number already registered as
+     * CONSUMER can still register a separate BUSINESS_OWNER account (and
+     * vice versa); only a duplicate of the *same* role is rejected.
      */
     @Transactional
     public TokenPairDto register(String rawPhoneNumber, String code, String password, UserRole role, String name) {
@@ -69,7 +84,7 @@ public class AuthService {
         validatePassword(password);
         otpService.verifyCode(phone, code);
 
-        if (userRepository.existsByPhoneNumber(phone)) {
+        if (userRepository.existsByPhoneNumberAndRole(phone, role)) {
             throw new BadRequestException("This phone number is already registered — please log in instead.");
         }
 
@@ -84,16 +99,25 @@ public class AuthService {
         return issueNewTokenFamily(user.getId(), user.getRole());
     }
 
-    /** Ordinary phone+password login — no OTP involved. */
+    /**
+     * Ordinary phone+password login — no OTP involved. {@code context} picks
+     * which account pool to resolve against for this phone number:
+     * {@code BUSINESS_OWNER} logs into the business account only; anything
+     * else (including {@code null}, the main site's default) resolves
+     * against CONSUMER or ADMIN — mirroring Yelp's separate consumer vs
+     * business login surfaces without a second endpoint.
+     */
     @Transactional
-    public TokenPairDto login(String rawPhoneNumber, String password) {
+    public TokenPairDto login(String rawPhoneNumber, String password, UserRole context) {
         String phone = PhoneNumberUtils.normalize(rawPhoneNumber);
-        User user = userRepository.findByPhoneNumber(phone).orElse(null);
+        List<UserRole> candidateRoles = context == UserRole.BUSINESS_OWNER
+                ? List.of(UserRole.BUSINESS_OWNER)
+                : List.of(UserRole.CONSUMER, UserRole.ADMIN);
 
-        if (user == null || user.getPasswordHash() == null
-                || !passwordEncoder.matches(password, user.getPasswordHash())) {
-            throw new BadRequestException("Invalid phone number or password.");
-        }
+        User user = userRepository.findAllByPhoneNumberAndRoleIn(phone, candidateRoles).stream()
+                .filter(u -> u.getPasswordHash() != null && passwordEncoder.matches(password, u.getPasswordHash()))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException("Invalid phone number or password."));
 
         return issueNewTokenFamily(user.getId(), user.getRole());
     }
@@ -101,15 +125,19 @@ public class AuthService {
     /**
      * Sets a new password after proving phone ownership via OTP, then
      * revokes all existing sessions (any refresh token issued under the old
-     * password) and logs the user in with a fresh token family.
+     * password) and logs the user in with a fresh token family. {@code role}
+     * disambiguates which of a phone number's (up to two) accounts to reset.
      */
     @Transactional
-    public TokenPairDto resetPassword(String rawPhoneNumber, String code, String newPassword) {
+    public TokenPairDto resetPassword(String rawPhoneNumber, String code, String newPassword, UserRole role) {
+        if (role == null || role == UserRole.ADMIN) {
+            throw new BadRequestException("Invalid role for password reset.");
+        }
         String phone = PhoneNumberUtils.normalize(rawPhoneNumber);
         validatePassword(newPassword);
         otpService.verifyCode(phone, code);
 
-        User user = userRepository.findByPhoneNumber(phone)
+        User user = userRepository.findByPhoneNumberAndRole(phone, role)
                 .orElseThrow(() -> new BadRequestException("No account found for this phone number."));
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
@@ -117,6 +145,96 @@ public class AuthService {
         refreshTokenRepository.revokeAllForUser(user.getId());
 
         return issueNewTokenFamily(user.getId(), user.getRole());
+    }
+
+    /**
+     * Switches from the caller's current account to its linked counterpart
+     * (see {@code accountlink.AccountLink}) with no re-authentication — the
+     * established link is the proof. Issues a brand-new token family for the
+     * target account, exactly like a fresh login; the source account's own
+     * session is left untouched (not revoked), since the person may still
+     * have it open elsewhere.
+     */
+    @Transactional
+    public TokenPairDto switchAccount(UUID currentUserId) {
+        UUID partnerId = accountLinkService.partnerOf(currentUserId)
+                .orElseThrow(() -> new BadRequestException(
+                        "No linked account to switch to — create or link a business account first."));
+        User partner = userRepository.findById(partnerId)
+                .orElseThrow(() -> new ForbiddenException("Linked account no longer exists"));
+        return issueNewTokenFamily(partner.getId(), partner.getRole());
+    }
+
+    /**
+     * In-session shortcut for a logged-in CONSUMER account to create its
+     * paired BUSINESS_OWNER account. The phone number is already
+     * OTP-verified (that's how the caller got their consumer session in the
+     * first place), so no fresh OTP is required here — just a new password +
+     * display name. Auto-links the two accounts immediately (this one flow
+     * already proves the same person controls both) and returns tokens for
+     * the new business account, auto-switching into it.
+     */
+    @Transactional
+    public TokenPairDto registerBusinessFromConsumer(UUID consumerUserId, String password, String name) {
+        User consumer = userRepository.findById(consumerUserId)
+                .orElseThrow(() -> new ForbiddenException("Account no longer exists"));
+        if (consumer.getRole() != UserRole.CONSUMER) {
+            throw new BadRequestException("Only a personal account can create a linked business account.");
+        }
+        if (accountLinkService.isLinked(consumerUserId)) {
+            throw new BadRequestException("This account is already linked to a business account.");
+        }
+        if (userRepository.existsByPhoneNumberAndRole(consumer.getPhoneNumber(), UserRole.BUSINESS_OWNER)) {
+            throw new BadRequestException(
+                    "A business account already exists for this phone number — use the link-accounts flow instead.");
+        }
+        if (name == null || name.isBlank()) {
+            throw new BadRequestException("Name is required.");
+        }
+        validatePassword(password);
+
+        User business = userRepository.save(User.builder()
+                .phoneNumber(consumer.getPhoneNumber())
+                .role(UserRole.BUSINESS_OWNER)
+                .otpVerified(true)
+                .passwordHash(passwordEncoder.encode(password))
+                .name(name.trim())
+                .build());
+
+        accountLinkService.link(consumerUserId, business.getId());
+
+        return issueNewTokenFamily(business.getId(), business.getRole());
+    }
+
+    /**
+     * Links the caller's current account with the opposite-role account
+     * already registered under the same phone number (the case where both
+     * were created independently, not via {@link #registerBusinessFromConsumer}).
+     * Requires a fresh OTP to the shared phone as proof, since — unlike the
+     * in-session shortcut above — this flow doesn't otherwise establish that
+     * the caller controls the other account too.
+     */
+    @Transactional
+    public void linkAccounts(UUID currentUserId, String code) {
+        User current = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new ForbiddenException("Account no longer exists"));
+        UserRole otherRole;
+        if (current.getRole() == UserRole.CONSUMER) {
+            otherRole = UserRole.BUSINESS_OWNER;
+        } else if (current.getRole() == UserRole.BUSINESS_OWNER) {
+            otherRole = UserRole.CONSUMER;
+        } else {
+            throw new BadRequestException("Admin accounts cannot be linked.");
+        }
+
+        User other = userRepository.findByPhoneNumberAndRole(current.getPhoneNumber(), otherRole)
+                .orElseThrow(() -> new BadRequestException("No matching account found for this phone number."));
+
+        otpService.verifyCode(current.getPhoneNumber(), code);
+
+        UUID consumerId = current.getRole() == UserRole.CONSUMER ? current.getId() : other.getId();
+        UUID businessId = current.getRole() == UserRole.BUSINESS_OWNER ? current.getId() : other.getId();
+        accountLinkService.link(consumerId, businessId);
     }
 
     private void validatePassword(String password) {

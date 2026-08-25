@@ -24,13 +24,13 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<TokenPairDto> login(@Valid @RequestBody LoginRequestDto request) {
-        return ResponseEntity.ok(authService.login(request.phoneNumber(), request.password()));
+        return ResponseEntity.ok(authService.login(request.phoneNumber(), request.password(), request.context()));
     }
 
     @PostMapping("/reset-password")
     public ResponseEntity<TokenPairDto> resetPassword(@Valid @RequestBody ResetPasswordRequestDto request) {
         return ResponseEntity.ok(
-                authService.resetPassword(request.phoneNumber(), request.code(), request.newPassword()));
+                authService.resetPassword(request.phoneNumber(), request.code(), request.newPassword(), request.role()));
     }
 
     @PostMapping("/refresh")
@@ -41,6 +41,26 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout() {
         authService.logout(CurrentUser.id());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Frictionless switch to the caller's linked counterpart account (see accountlink.AccountLink) — no password re-entry. */
+    @PostMapping("/switch-account")
+    public ResponseEntity<TokenPairDto> switchAccount() {
+        return ResponseEntity.ok(authService.switchAccount(CurrentUser.id()));
+    }
+
+    /** Logged-in CONSUMER creates+links its BUSINESS_OWNER counterpart in one step, no fresh OTP needed. */
+    @PostMapping("/register-business")
+    public ResponseEntity<TokenPairDto> registerBusiness(@Valid @RequestBody RegisterBusinessRequest request) {
+        return ResponseEntity.ok(
+                authService.registerBusinessFromConsumer(CurrentUser.id(), request.password(), request.name()));
+    }
+
+    /** Links the caller's account with an independently-registered opposite-role account under the same phone, via OTP proof. */
+    @PostMapping("/link-accounts")
+    public ResponseEntity<Void> linkAccounts(@Valid @RequestBody LinkAccountsRequest request) {
+        authService.linkAccounts(CurrentUser.id(), request.code());
         return ResponseEntity.noContent().build();
     }
 }

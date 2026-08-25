@@ -54,8 +54,8 @@ public class AdminBootstrapRunner implements CommandLineRunner {
         }
 
         String phone = PhoneNumberUtils.normalize(defaultPhone);
-        if (userRepository.existsByPhoneNumber(phone)) {
-            log.warn("Admin bootstrap skipped: phone {} already registered under a non-admin role.", phone);
+        if (userRepository.existsByPhoneNumberAndRole(phone, UserRole.ADMIN)) {
+            log.warn("Admin bootstrap skipped: phone {} is already registered as an admin.", phone);
             return;
         }
 

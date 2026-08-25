@@ -13,10 +13,20 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
-    /** Enforces "one phone number, one role": look up before allowing signup under the other role. */
-    Optional<User> findByPhoneNumber(String phoneNumber);
+    /**
+     * Phone number is no longer globally unique — one phone can back at most
+     * one CONSUMER row and one BUSINESS_OWNER row (see V17 migration), so
+     * every lookup/existence-check must be scoped by role. Deliberately no
+     * unscoped {@code findByPhoneNumber}/{@code existsByPhoneNumber} here
+     * anymore — those would throw once a phone number legitimately has two
+     * rows.
+     */
+    Optional<User> findByPhoneNumberAndRole(String phoneNumber, UserRole role);
 
-    boolean existsByPhoneNumber(String phoneNumber);
+    boolean existsByPhoneNumberAndRole(String phoneNumber, UserRole role);
+
+    /** Main-site login resolves against CONSUMER and ADMIN rows for a phone — never BUSINESS_OWNER (that has its own login surface). */
+    List<User> findAllByPhoneNumberAndRoleIn(String phoneNumber, Collection<UserRole> roles);
 
     /** Batched "which of these business owners are still admin-placeholder accounts" — see BusinessService#claimedByOwner. */
     @Query("SELECT u.id FROM User u WHERE u.id IN :ids AND u.role = :role")

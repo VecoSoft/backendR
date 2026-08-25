@@ -52,9 +52,8 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
             throw new BadCredentialsException("Invalid phone number or password");
         }
 
-        User user = userRepository.findByPhoneNumber(phone).orElse(null);
+        User user = userRepository.findByPhoneNumberAndRole(phone, UserRole.ADMIN).orElse(null);
         if (user == null
-                || user.getRole() != UserRole.ADMIN
                 || user.getPasswordHash() == null
                 || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             throw new BadCredentialsException("Invalid phone number or password");

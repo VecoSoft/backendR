@@ -4,6 +4,7 @@ import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.auth.UserRole;
 import com.bdreview.platform.common.BadRequestException;
+import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PhoneNumberUtils;
 import com.bdreview.platform.common.ResourceNotFoundException;
@@ -74,8 +75,10 @@ public class BusinessService {
         this.self = self;
     }
 
+    /** Only a BUSINESS_OWNER account can list a business (spec update: two-account model, mirrors biz.yelp.com being the only place listings are managed). */
     @Transactional
     public BusinessResponse create(UUID ownerUserId, CreateBusinessRequest request) {
+        CurrentUser.requireRole("BUSINESS_OWNER");
         Category category = categoryRepository.findById(request.categoryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
         City city = cityRepository.findById(request.cityId())
