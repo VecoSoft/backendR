@@ -19,6 +19,13 @@ public record UpdateBusinessRequest(
         @NotNull @DecimalMin("-90.0") @DecimalMax("90.0") Double latitude,
         @NotNull @DecimalMin("-180.0") @DecimalMax("180.0") Double longitude,
         @NotNull PriceTier priceTier,
-        List<UUID> attributeIds
+        List<UUID> attributeIds,
+
+        // "Business presence" (spec Step 4) — all optional. Blank is treated as absent.
+        @Size(max = 500) String websiteUrl,
+        @Size(max = 20) String whatsappNumber,
+        @Email @Size(max = 255) String email,
+        @Size(max = 500) String facebookUrl,
+        @Size(max = 500) String instagramUrl
 ) {
 }

@@ -8,7 +8,10 @@ import com.bdreview.platform.common.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Spec §13: 5-10 photos per business beyond the cover photo. */
@@ -51,6 +54,32 @@ public class BusinessPhotoService {
     public void delete(UUID ownerUserId, UUID businessId, UUID photoId) {
         getOwnedOrThrow(ownerUserId, businessId);
         photoRepository.deleteByIdAndBusinessId(photoId, businessId);
+    }
+
+    /**
+     * Rewrites {@code sort_order} to match the given order. {@code orderedPhotoIds}
+     * must list every current gallery photo id exactly once — a partial or stale
+     * list is rejected rather than silently applied.
+     */
+    @Transactional
+    public List<BusinessPhoto> reorder(UUID ownerUserId, UUID businessId, List<UUID> orderedPhotoIds) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        List<BusinessPhoto> existing = photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+
+        Map<UUID, BusinessPhoto> byId = new HashMap<>();
+        for (BusinessPhoto photo : existing) {
+            byId.put(photo.getId(), photo);
+        }
+        if (orderedPhotoIds.size() != existing.size()
+                || !byId.keySet().equals(new HashSet<>(orderedPhotoIds))) {
+            throw new BadRequestException("Reorder list must contain every gallery photo id exactly once.");
+        }
+
+        for (int i = 0; i < orderedPhotoIds.size(); i++) {
+            byId.get(orderedPhotoIds.get(i)).setSortOrder(i);
+        }
+        photoRepository.saveAll(byId.values());
+        return photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
     }
 
     public List<BusinessPhoto> gallery(UUID businessId) {

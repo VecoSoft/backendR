@@ -36,6 +36,13 @@ public class BusinessPhotoController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Owner reorders their gallery — body carries every photo id once, in the new display order. */
+    @PatchMapping("/reorder")
+    public ResponseEntity<List<BusinessPhoto>> reorder(@PathVariable UUID businessId,
+                                                       @Valid @RequestBody ReorderPhotosRequest request) {
+        return ResponseEntity.ok(photoService.reorder(CurrentUser.id(), businessId, request.orderedPhotoIds()));
+    }
+
     @GetMapping
     public ResponseEntity<List<BusinessPhoto>> gallery(@PathVariable UUID businessId) {
         return ResponseEntity.ok(photoService.gallery(businessId));

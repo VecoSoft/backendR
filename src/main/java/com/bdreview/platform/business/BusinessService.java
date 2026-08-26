@@ -51,6 +51,8 @@ public class BusinessService {
     private final NotificationService notificationService;
     private final BusinessPhotoRepository businessPhotoRepository;
     private final BusinessReactionRepository businessReactionRepository;
+    private final com.bdreview.platform.catalog.CatalogService catalogService;
+    private final com.bdreview.platform.updates.BusinessUpdateService businessUpdateService;
     private final BusinessService self;
 
     public BusinessService(BusinessRepository businessRepository,
@@ -62,6 +64,8 @@ public class BusinessService {
                            NotificationService notificationService,
                            BusinessPhotoRepository businessPhotoRepository,
                            BusinessReactionRepository businessReactionRepository,
+                           com.bdreview.platform.catalog.CatalogService catalogService,
+                           com.bdreview.platform.updates.BusinessUpdateService businessUpdateService,
                            @Lazy BusinessService self) {
         this.businessRepository = businessRepository;
         this.categoryRepository = categoryRepository;
@@ -72,6 +76,8 @@ public class BusinessService {
         this.notificationService = notificationService;
         this.businessPhotoRepository = businessPhotoRepository;
         this.businessReactionRepository = businessReactionRepository;
+        this.catalogService = catalogService;
+        this.businessUpdateService = businessUpdateService;
         this.self = self;
     }
 
@@ -101,6 +107,11 @@ public class BusinessService {
                 .description(request.description())
                 .coverPhotoUrl(request.coverPhotoUrl())
                 .logoUrl(request.logoUrl())
+                .websiteUrl(blankToNull(request.websiteUrl()))
+                .whatsappNumber(normalizePhoneOrNull(request.whatsappNumber()))
+                .email(blankToNull(request.email()))
+                .facebookUrl(blankToNull(request.facebookUrl()))
+                .instagramUrl(blankToNull(request.instagramUrl()))
                 .location(point(request.latitude(), request.longitude()))
                 .priceTier(request.priceTier())
                 .attributes(attributes)
@@ -132,6 +143,11 @@ public class BusinessService {
         business.setDescription(request.description());
         business.setCoverPhotoUrl(request.coverPhotoUrl());
         business.setLogoUrl(request.logoUrl());
+        business.setWebsiteUrl(blankToNull(request.websiteUrl()));
+        business.setWhatsappNumber(normalizePhoneOrNull(request.whatsappNumber()));
+        business.setEmail(blankToNull(request.email()));
+        business.setFacebookUrl(blankToNull(request.facebookUrl()));
+        business.setInstagramUrl(blankToNull(request.instagramUrl()));
         business.setLocation(point(request.latitude(), request.longitude()));
         business.setPriceTier(request.priceTier());
         business.setAttributes(attributes);
@@ -214,7 +230,13 @@ public class BusinessService {
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + slug));
         List<String> galleryUrls = businessPhotoRepository.findByBusinessIdOrderBySortOrderAsc(business.getId())
                 .stream().map(BusinessPhoto::getUrl).toList();
-        return BusinessResponse.from(business, photoUrlsFor(business, galleryUrls), isClaimed(business.getOwnerUserId()));
+        // Detail view carries the category-module presence flags (one cheap EXISTS
+        // per module) plus the has-updates flag so the public page can pick tabs
+        // without loading any module or updates rows.
+        return BusinessResponse.from(business, photoUrlsFor(business, galleryUrls),
+                isClaimed(business.getOwnerUserId()),
+                catalogService.moduleFlags(business.getId()),
+                businessUpdateService.hasPublished(business.getId()));
     }
 
     @Transactional(readOnly = true)
@@ -327,6 +349,17 @@ public class BusinessService {
 
     private static String randomSuffix() {
         return Integer.toHexString(RANDOM.nextInt(0xFFFFFF));
+    }
+
+    /** Optional "business presence" text fields: an empty submission is stored as NULL so the public page can simply omit it. */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    /** WhatsApp numbers get the same E.164 normalization as the primary contact number; blank stays blank. */
+    private static String normalizePhoneOrNull(String raw) {
+        String trimmed = blankToNull(raw);
+        return trimmed == null ? null : PhoneNumberUtils.normalize(trimmed);
     }
 
     private static Point point(double latitude, double longitude) {

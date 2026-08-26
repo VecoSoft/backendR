@@ -40,6 +40,11 @@
                 <h2>Add category</h2>
                 <form th:action="@{/admin/reference-data/categories/new}" method="post">
                     <input type="text" name="name" class="form-control form-control-sm mb-2" placeholder="e.g. Electrician" required/>
+                    <label class="form-label small text-muted mb-1">Kind — drives category-specific modules</label>
+                    <select name="kind" class="form-select form-select-sm mb-2">
+                        <option th:each="k : ${categoryKinds}" th:value="${k}" th:text="${k}"
+                                th:selected="${k.name() == 'GENERAL'}"></option>
+                    </select>
                     <button type="submit" class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> Add</button>
                 </form>
             </div>
@@ -47,14 +52,27 @@
         <div class="col-md-8">
             <div class="admin-table-wrap">
                 <table class="admin-table">
-                    <thead><tr><th>Name</th><th></th></tr></thead>
+                    <thead><tr><th>Name &amp; kind</th><th></th></tr></thead>
                     <tbody>
                     <tr th:each="c : ${categories}">
-                        <td th:text="${c.name}">-</td>
+                        <td>
+                            <form th:action="@{/admin/reference-data/categories/{id}/update(id=${c.id})}" method="post"
+                                  class="d-flex gap-2 align-items-center">
+                                <input type="text" name="name" th:value="${c.name}"
+                                       class="form-control form-control-sm" style="min-width: 9rem" required/>
+                                <select name="kind" class="form-select form-select-sm" style="min-width: 8rem">
+                                    <option th:each="k : ${categoryKinds}" th:value="${k}" th:text="${k}"
+                                            th:selected="${k == c.kind}"></option>
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Save name &amp; kind">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            </form>
+                        </td>
                         <td class="text-end">
                             <form th:action="@{/admin/reference-data/categories/{id}/delete(id=${c.id})}" method="post"
                                   onsubmit="return confirm('Delete this category?');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
                             </form>
                         </td>
                     </tr>
