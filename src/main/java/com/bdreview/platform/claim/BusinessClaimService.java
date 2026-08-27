@@ -69,6 +69,7 @@ public class BusinessClaimService {
 
     @Transactional
     public BusinessClaim verifyPhoneAndClaim(UUID claimantUserId, UUID businessId, String code) {
+        CurrentUser.requireRole("BUSINESS_OWNER");
         Business business = getBusinessOrThrow(businessId);
         ensureClaimable(business, claimantUserId);
         otpService.verifyCode(business.getContactNumber(), code);
@@ -85,6 +86,7 @@ public class BusinessClaimService {
 
     @Transactional
     public BusinessClaim verifyEmailAndClaim(UUID claimantUserId, UUID businessId, String email, String code) {
+        CurrentUser.requireRole("BUSINESS_OWNER");
         Business business = getBusinessOrThrow(businessId);
         ensureClaimable(business, claimantUserId);
         emailVerificationService.verifyCode(email, code);
@@ -128,6 +130,7 @@ public class BusinessClaimService {
 
     @Transactional
     public BusinessClaim fileClaim(UUID claimantUserId, FileClaimRequest request) {
+        CurrentUser.requireRole("BUSINESS_OWNER");
         if (request.verificationMethod() != VerificationMethod.DOCUMENT) {
             throw new BadRequestException("Use phone or email verification for an instant claim");
         }

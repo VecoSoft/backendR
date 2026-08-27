@@ -41,8 +41,8 @@ public class AdminUserService {
     @Transactional
     public User createAdmin(UserForm form) {
         String phone = PhoneNumberUtils.normalize(form.getPhoneNumber());
-        if (userRepository.existsByPhoneNumber(phone)) {
-            throw new BadRequestException("This phone number is already registered.");
+        if (userRepository.existsByPhoneNumberAndRole(phone, UserRole.ADMIN)) {
+            throw new BadRequestException("This phone number is already registered as an admin.");
         }
         validatePassword(form.getPassword());
 

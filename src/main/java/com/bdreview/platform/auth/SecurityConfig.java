@@ -56,6 +56,9 @@ public class SecurityConfig {
                         // pre-signed upload URLs (§13) are bare fetch() PUTs with no Authorization
                         // header — the URL itself (unguessable object key) is the auth boundary
                         .requestMatchers("/api/v1/storage/**").permitAll()
+                        // Phase 3 — fire-and-forget page-interaction tracking (sendBeacon has no auth
+                        // header). Payload is a fixed enum + an opaque session id; nothing sensitive.
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/businesses/*/events").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

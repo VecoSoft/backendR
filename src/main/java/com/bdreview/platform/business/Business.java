@@ -65,6 +65,27 @@ public class Business {
     @Column(name = "logo_url", columnDefinition = "text")
     private String logoUrl;
 
+    // -----------------------------------------------------------------
+    // "Business presence" (spec Step 4) — optional ways to reach the
+    // business online. All nullable; blank input is stored as NULL and
+    // an empty value is never rendered on the public page. See V18.
+    // -----------------------------------------------------------------
+    @Column(name = "website_url", columnDefinition = "text")
+    private String websiteUrl;
+
+    /** E.164 normalized, same convention as {@link #contactNumber}. */
+    @Column(name = "whatsapp_number", length = 20)
+    private String whatsappNumber;
+
+    @Column(length = 255)
+    private String email;
+
+    @Column(name = "facebook_url", columnDefinition = "text")
+    private String facebookUrl;
+
+    @Column(name = "instagram_url", columnDefinition = "text")
+    private String instagramUrl;
+
     /** PostGIS geography(Point,4326), GiST-indexed — see V1__init.sql. */
     @Column(nullable = false, columnDefinition = "geography(Point,4326)")
     private Point location;

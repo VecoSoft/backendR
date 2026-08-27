@@ -39,6 +39,7 @@ public class AdminReferenceDataController {
         model.addAttribute("cities", cityRepository.findAll(Sort.by("name")));
         model.addAttribute("areas", areaRepository.findAllWithCity());
         model.addAttribute("attributes", attributeRepository.findAll(Sort.by("name")));
+        model.addAttribute("categoryKinds", com.bdreview.platform.business.CategoryKind.values());
         model.addAttribute("referenceItemForm", new ReferenceItemForm());
         model.addAttribute("active", "reference-data");
         return "admin/reference/index";
@@ -47,10 +48,36 @@ public class AdminReferenceDataController {
     @PostMapping("/categories/new")
     public String addCategory(@ModelAttribute ReferenceItemForm form, RedirectAttributes redirectAttributes) {
         try {
-            categoryRepository.save(Category.builder().name(form.getName()).build());
+            categoryRepository.save(Category.builder()
+                    .name(form.getName())
+                    .kind(form.getKind() != null ? form.getKind() : com.bdreview.platform.business.CategoryKind.GENERAL)
+                    .build());
             redirectAttributes.addFlashAttribute("successMessage", "Category added.");
         } catch (DataIntegrityViolationException ex) {
             redirectAttributes.addFlashAttribute("errorMessage", "That category already exists.");
+        }
+        return "redirect:/admin/reference-data?tab=categories";
+    }
+
+    /** Edit an existing category's name and/or kind (spec Phase 2: admin must be able to correct the kind). */
+    @PostMapping("/categories/{id}/update")
+    public String updateCategory(@PathVariable UUID id, @ModelAttribute ReferenceItemForm form,
+                                 RedirectAttributes redirectAttributes) {
+        try {
+            Category category = categoryRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
+            if (form.getName() != null && !form.getName().isBlank()) {
+                category.setName(form.getName().trim());
+            }
+            if (form.getKind() != null) {
+                category.setKind(form.getKind());
+            }
+            categoryRepository.save(category);
+            redirectAttributes.addFlashAttribute("successMessage", "Category updated.");
+        } catch (DataIntegrityViolationException ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", "Another category already has that name.");
+        } catch (ResourceNotFoundException ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
         }
         return "redirect:/admin/reference-data?tab=categories";
     }

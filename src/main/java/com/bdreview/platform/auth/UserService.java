@@ -1,5 +1,6 @@
 package com.bdreview.platform.auth;
 
+import com.bdreview.platform.accountlink.AccountLinkService;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ResourceNotFoundException;
 import com.bdreview.platform.gallery.ObjectStorageClient;
@@ -18,10 +19,13 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final ObjectStorageClient objectStorageClient;
+    private final AccountLinkService accountLinkService;
 
-    public UserService(UserRepository userRepository, ObjectStorageClient objectStorageClient) {
+    public UserService(UserRepository userRepository, ObjectStorageClient objectStorageClient,
+                        AccountLinkService accountLinkService) {
         this.userRepository = userRepository;
         this.objectStorageClient = objectStorageClient;
+        this.accountLinkService = accountLinkService;
     }
 
     public UserProfileDto getProfile(UUID userId) {
@@ -51,8 +55,9 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    private static UserProfileDto toDto(User user) {
+    private UserProfileDto toDto(User user) {
         return new UserProfileDto(user.getId(), user.getPhoneNumber(), user.getRole(),
-                user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage());
+                user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage(),
+                accountLinkService.isLinked(user.getId()));
     }
 }
