@@ -1,5 +1,6 @@
 package com.bdreview.platform.business;
 
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,7 +38,7 @@ public class ReferenceDataController {
 
     @GetMapping("/categories")
     public ResponseEntity<List<Category>> categories() {
-        return ResponseEntity.ok(categoryRepository.findAll());
+        return ResponseEntity.ok(categoryRepository.findAll(Sort.by("name")));
     }
 
     @GetMapping("/attributes")
