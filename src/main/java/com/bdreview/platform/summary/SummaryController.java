@@ -1,3 +1,4 @@
+// SummaryController.java
 package com.bdreview.platform.summary;
 
 import com.bdreview.platform.common.ResourceNotFoundException;
@@ -14,7 +15,7 @@ public class SummaryController {
     private final SummaryGenerationService summaryGenerationService;
 
     public SummaryController(BusinessReviewSummaryRepository summaryRepository,
-                              SummaryGenerationService summaryGenerationService) {
+                             SummaryGenerationService summaryGenerationService) {
         this.summaryRepository = summaryRepository;
         this.summaryGenerationService = summaryGenerationService;
     }

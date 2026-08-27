@@ -33,8 +33,8 @@ public class SummaryGenerationService {
     private final ReviewRepository reviewRepository;
 
     public SummaryGenerationService(SummaryMlClient mlClient,
-                                     BusinessReviewSummaryRepository summaryRepository,
-                                     ReviewRepository reviewRepository) {
+                                    BusinessReviewSummaryRepository summaryRepository,
+                                    ReviewRepository reviewRepository) {
         this.mlClient = mlClient;
         this.summaryRepository = summaryRepository;
         this.reviewRepository = reviewRepository;
@@ -66,8 +66,14 @@ public class SummaryGenerationService {
         );
 
         SummaryGenerationResponseDto response = mlClient.generate(request).block();
-        if (response == null) {
-            return; // ML service unavailable — leave the existing cached summary in place
+        if (response == null || response.summaryText() == null || response.summaryText().isBlank()) {
+            // ML service unavailable, or it had nothing usable to summarize
+            // (e.g. only rating-only reviews with no text yet) — leave the
+            // existing cached summary in place rather than overwriting a
+            // real summary (or creating a fake one) with empty/placeholder
+            // text that the profile page would otherwise show as if it were
+            // a genuine description.
+            return;
         }
 
         Instant now = Instant.now();

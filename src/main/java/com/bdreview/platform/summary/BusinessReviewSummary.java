@@ -1,3 +1,4 @@
+// BusinessReviewSummary.java
 package com.bdreview.platform.summary;
 
 import jakarta.persistence.*;

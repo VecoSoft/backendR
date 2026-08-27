@@ -1,3 +1,4 @@
+// SummaryGenerationResponseDto.java
 package com.bdreview.platform.summary;
 
 import java.util.UUID;
