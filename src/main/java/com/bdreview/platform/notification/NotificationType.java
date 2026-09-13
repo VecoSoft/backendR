@@ -17,5 +17,9 @@ public enum NotificationType {
     NEW_BOOKING,
     BOOKING_CONFIRMED,
     BOOKING_REJECTED,
-    BOOKING_STATUS_CHANGED
+    BOOKING_STATUS_CHANGED,
+    // "Join Community" feed — see community.CommunityPostService
+    COMMUNITY_POST_COMMENT,
+    COMMUNITY_POST_REACTION,
+    COMMUNITY_POST_MENTION
 }

@@ -70,6 +70,10 @@ public class SecurityConfig {
                         // Phase 3 — fire-and-forget page-interaction tracking (sendBeacon has no auth
                         // header). Payload is a fixed enum + an opaque session id; nothing sensitive.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/businesses/*/events").permitAll()
+                        // "Join Community" feed (spec: Facebook-style posts/comments) is a public
+                        // read surface like business browse/search above — posting, reacting,
+                        // commenting, and editing still fall through to anyRequest().authenticated().
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/community/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
