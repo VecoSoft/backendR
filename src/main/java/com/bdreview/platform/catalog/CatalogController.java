@@ -20,9 +20,11 @@ import java.util.UUID;
 public class CatalogController {
 
     private final CatalogService catalog;
+    private final StaffScheduleService staffSchedule;
 
-    public CatalogController(CatalogService catalog) {
+    public CatalogController(CatalogService catalog, StaffScheduleService staffSchedule) {
         this.catalog = catalog;
+        this.staffSchedule = staffSchedule;
     }
 
     // ---- Services / gym membership / gym facilities ----------------------
@@ -58,6 +60,12 @@ public class CatalogController {
         return catalog.reorderServices(CurrentUser.id(), businessId, section, req.orderedIds());
     }
 
+    /** Public — active staff qualified to perform this service (booking's "Choose staff" step). */
+    @GetMapping("/services/{serviceId}/staff")
+    public List<TeamMember> staffForService(@PathVariable UUID businessId, @PathVariable UUID serviceId) {
+        return staffSchedule.qualifiedActiveStaff(businessId, serviceId);
+    }
+
     // ---- Team members (doctors / staff / trainers) ----------------------
 
     @GetMapping("/team")
@@ -85,6 +93,37 @@ public class CatalogController {
     @PatchMapping("/team/reorder")
     public List<TeamMember> reorderTeam(@PathVariable UUID businessId, @Valid @RequestBody ReorderRequest req) {
         return catalog.reorderTeam(CurrentUser.id(), businessId, req.orderedIds());
+    }
+
+    // ---- Staff scheduling (booking — Salon & Beauty) --------------------
+
+    @GetMapping("/team/{staffId}/schedule")
+    public StaffScheduleService.StaffScheduleResponse getStaffSchedule(@PathVariable UUID businessId, @PathVariable UUID staffId) {
+        return staffSchedule.scheduleFor(CurrentUser.id(), businessId, staffId);
+    }
+
+    @PutMapping("/team/{staffId}/schedule")
+    public List<StaffWeeklySchedule> updateStaffSchedule(@PathVariable UUID businessId, @PathVariable UUID staffId,
+                                                         @Valid @RequestBody ReplaceScheduleRequest req) {
+        return staffSchedule.replaceSchedule(CurrentUser.id(), businessId, staffId, req);
+    }
+
+    @PutMapping("/team/{staffId}/services")
+    public List<StaffServiceAssignment> updateStaffServices(@PathVariable UUID businessId, @PathVariable UUID staffId,
+                                                             @Valid @RequestBody StaffServiceAssignmentsRequest req) {
+        return staffSchedule.replaceServices(CurrentUser.id(), businessId, staffId, req);
+    }
+
+    @PostMapping("/team/{staffId}/time-off")
+    public StaffTimeOff addStaffTimeOff(@PathVariable UUID businessId, @PathVariable UUID staffId,
+                                        @Valid @RequestBody TimeOffRequest req) {
+        return staffSchedule.addTimeOff(CurrentUser.id(), businessId, staffId, req);
+    }
+
+    @DeleteMapping("/team/{staffId}/time-off/{id}")
+    public ResponseEntity<Void> removeStaffTimeOff(@PathVariable UUID businessId, @PathVariable UUID staffId, @PathVariable UUID id) {
+        staffSchedule.removeTimeOff(CurrentUser.id(), businessId, staffId, id);
+        return ResponseEntity.noContent().build();
     }
 
     // ---- Menu items (restaurant) ---------------------------------------

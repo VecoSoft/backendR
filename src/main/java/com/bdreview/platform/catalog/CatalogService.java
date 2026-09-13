@@ -83,6 +83,8 @@ public class CatalogService {
                 .name(req.name().trim())
                 .description(blankToNull(req.description()))
                 .priceText(blankToNull(req.priceText()))
+                .durationMinutes(req.durationMinutes())
+                .bufferMinutes(req.bufferMinutes())
                 .sortOrder((int) existing)
                 .build());
     }
@@ -94,6 +96,8 @@ public class CatalogService {
         row.setName(req.name().trim());
         row.setDescription(blankToNull(req.description()));
         row.setPriceText(blankToNull(req.priceText()));
+        row.setDurationMinutes(req.durationMinutes());
+        row.setBufferMinutes(req.bufferMinutes());
         if (req.section() != null) {
             row.setSection(req.section());
         }
@@ -135,6 +139,7 @@ public class CatalogService {
                 .role(blankToNull(req.role()))
                 .bio(blankToNull(req.bio()))
                 .photoUrl(blankToNull(req.photoUrl()))
+                .active(req.active() == null || req.active())
                 .sortOrder((int) existing)
                 .build());
     }
@@ -147,6 +152,7 @@ public class CatalogService {
         row.setRole(blankToNull(req.role()));
         row.setBio(blankToNull(req.bio()));
         row.setPhotoUrl(blankToNull(req.photoUrl()));
+        row.setActive(req.active() == null || req.active());
         return teamRepository.save(row);
     }
 
@@ -184,6 +190,10 @@ public class CatalogService {
                 .name(req.name().trim())
                 .description(blankToNull(req.description()))
                 .priceText(blankToNull(req.priceText()))
+                .price(req.price())
+                .available(req.available() == null || req.available())
+                // Derived, not a separate toggle: a priced item is orderable.
+                .orderingEnabled(req.price() != null)
                 .photoUrl(blankToNull(req.photoUrl()))
                 .menuSection(blankToNull(req.menuSection()))
                 .popular(req.popular())
@@ -198,6 +208,9 @@ public class CatalogService {
         row.setName(req.name().trim());
         row.setDescription(blankToNull(req.description()));
         row.setPriceText(blankToNull(req.priceText()));
+        row.setPrice(req.price());
+        row.setAvailable(req.available() == null || req.available());
+        row.setOrderingEnabled(req.price() != null);
         row.setPhotoUrl(blankToNull(req.photoUrl()));
         row.setMenuSection(blankToNull(req.menuSection()));
         row.setPopular(req.popular());

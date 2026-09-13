@@ -39,6 +39,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiError> handleConflict(ConflictException ex, HttpServletRequest req) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest req) {
         String message = ex.getBindingResult().getFieldErrors().stream()

@@ -44,6 +44,17 @@ public class SecurityConfig {
                         // caller-specific reads must NOT fall under the public wildcard below —
                         // evaluated first since Spring Security takes the first matching rule
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/businesses/mine").authenticated()
+                        // booking availability (Stage 1 slot engine) must be browsable before login,
+                        // same as the rest of a business's public page — evaluated before the
+                        // broader "/bookings/**" owner-queue rule below
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/businesses/*/bookings/availability").permitAll()
+                        // commerce (Phase A orders, Phase C bookings) — the owner queues and owner
+                        // commerce settings are caller-specific; keep them off the public GET wildcard
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/businesses/*/orders", "/api/v1/businesses/*/orders/**",
+                                "/api/v1/businesses/*/bookings", "/api/v1/businesses/*/bookings/**",
+                                "/api/v1/businesses/*/commerce/manage").authenticated()
                         // public browse/search/profile-view surface (spec §16 consumer capabilities)
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/businesses/**", "/api/v1/categories/**", "/api/v1/cities/**",

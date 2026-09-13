@@ -7,5 +7,15 @@ public enum NotificationType {
     REPORT_DISMISSED,
     CONTENT_HIDDEN,
     LISTING_FLAGGED,
-    FLAG_REVIEW_REQUESTED
+    FLAG_REVIEW_REQUESTED,
+    // Commerce (Phase A) — order lifecycle
+    NEW_ORDER,
+    ORDER_ACCEPTED,
+    ORDER_REJECTED,
+    ORDER_STATUS_CHANGED,
+    // Commerce (Phase C) — booking lifecycle
+    NEW_BOOKING,
+    BOOKING_CONFIRMED,
+    BOOKING_REJECTED,
+    BOOKING_STATUS_CHANGED
 }

@@ -38,6 +38,11 @@ public class TeamMember {
     @Column(name = "photo_url", columnDefinition = "text")
     private String photoUrl;
 
+    /** Inactive staff are hidden from booking (staff picker, availability) and the public team showcase. */
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean active = true;
+
     @Builder.Default
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;

@@ -40,6 +40,14 @@ public class ServiceOffering {
     @Column(name = "price_text", length = 80)
     private String priceText;
 
+    /** Optional — powers slot generation for booking. Null falls back to a default. */
+    @Column(name = "duration_minutes")
+    private Integer durationMinutes;
+
+    /** Optional cleanup/travel time appended after the service when generating slots. */
+    @Column(name = "buffer_minutes")
+    private Integer bufferMinutes;
+
     @Builder.Default
     @Column(name = "sort_order", nullable = false)
     private int sortOrder = 0;
