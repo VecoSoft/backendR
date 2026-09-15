@@ -4,8 +4,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_review}?sslmode=${DB_SSLMODE:disable}
-    username: ${DB_USER:postgres}
-    password: ${DB_PASSWORD:12345}
+    username: postgres
+    password: 1234
     hikari:
       maximum-pool-size: 20
 
@@ -89,6 +89,6 @@ app:
     # these credentials so the panel is reachable out of the box. Change these
     # (or just log in and rotate the password) before deploying anywhere real.
     bootstrap-enabled: ${ADMIN_BOOTSTRAP_ENABLED:true}
-    default-phone: ${ADMIN_DEFAULT_PHONE:+8801700000000}
-    default-password: ${ADMIN_DEFAULT_PASSWORD:ChangeMe123!}
+    default-phone: ${ADMIN_DEFAULT_PHONE:01700000000}
+    default-password: ${ADMIN_DEFAULT_PASSWORD:12345678}
     default-name: ${ADMIN_DEFAULT_NAME:Platform Admin}

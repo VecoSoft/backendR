@@ -54,7 +54,11 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/businesses/*/orders", "/api/v1/businesses/*/orders/**",
                                 "/api/v1/businesses/*/bookings", "/api/v1/businesses/*/bookings/**",
-                                "/api/v1/businesses/*/commerce/manage").authenticated()
+                                "/api/v1/businesses/*/commerce/manage",
+                                "/api/v1/businesses/*/qr").authenticated()
+                        // Business QR V1 — resolving a scanned token is public, same as the rest
+                        // of a business's public page
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/qr/**").permitAll()
                         // public browse/search/profile-view surface (spec §16 consumer capabilities)
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/businesses/**", "/api/v1/categories/**", "/api/v1/cities/**",

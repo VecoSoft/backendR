@@ -6,5 +6,7 @@ public enum BusinessEventType {
     PHONE_CLICK,
     WHATSAPP_CLICK,
     DIRECTIONS_CLICK,
-    WEBSITE_CLICK
+    WEBSITE_CLICK,
+    /** A visitor opened the business page via its Business QR (V1). */
+    QR_SCAN
 }
