@@ -11,3 +11,4 @@ public class PlatformApplication {
         SpringApplication.run(PlatformApplication.class, args);
     }
 }
+

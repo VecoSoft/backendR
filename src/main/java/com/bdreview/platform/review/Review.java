@@ -57,6 +57,13 @@ public class Review {
     @Column(name = "cool_count", nullable = false)
     private int coolCount = 0;
 
+    /** Public owner reply (Google/Yelp-style "Response from the owner") — distinct from the private message thread. */
+    @Column(name = "owner_reply", columnDefinition = "text")
+    private String ownerReply;
+
+    @Column(name = "owner_replied_at")
+    private Instant ownerRepliedAt;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 

@@ -183,4 +183,32 @@ public class CatalogController {
     public List<FeaturedProduct> reorderProducts(@PathVariable UUID businessId, @Valid @RequestBody ReorderRequest req) {
         return catalog.reorderProducts(CurrentUser.id(), businessId, req.orderedIds());
     }
+
+    // ---- FAQ ---------------------------------------------------------
+
+    @GetMapping("/faqs")
+    public List<Faq> faqs(@PathVariable UUID businessId) {
+        return catalog.faqs(businessId);
+    }
+
+    @PostMapping("/faqs")
+    public Faq addFaq(@PathVariable UUID businessId, @Valid @RequestBody FaqRequest req) {
+        return catalog.addFaq(CurrentUser.id(), businessId, req);
+    }
+
+    @PutMapping("/faqs/{id}")
+    public Faq updateFaq(@PathVariable UUID businessId, @PathVariable UUID id, @Valid @RequestBody FaqRequest req) {
+        return catalog.updateFaq(CurrentUser.id(), businessId, id, req);
+    }
+
+    @DeleteMapping("/faqs/{id}")
+    public ResponseEntity<Void> deleteFaq(@PathVariable UUID businessId, @PathVariable UUID id) {
+        catalog.deleteFaq(CurrentUser.id(), businessId, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/faqs/reorder")
+    public List<Faq> reorderFaqs(@PathVariable UUID businessId, @Valid @RequestBody ReorderRequest req) {
+        return catalog.reorderFaqs(CurrentUser.id(), businessId, req.orderedIds());
+    }
 }

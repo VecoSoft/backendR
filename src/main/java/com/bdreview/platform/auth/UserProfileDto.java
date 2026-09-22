@@ -10,5 +10,7 @@ public record UserProfileDto(
         String name,
         String profilePhotoUrl,
         String preferredLanguage,
-        boolean hasLinkedAccount) {
+        boolean hasLinkedAccount,
+        /** Public "Join Community" pseudonymous handle — null until the setup flow is completed. */
+        String communityUsername) {
 }

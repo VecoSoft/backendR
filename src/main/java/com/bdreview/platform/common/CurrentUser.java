@@ -24,6 +24,19 @@ public final class CurrentUser {
         }
     }
 
+    /** Same as id(), but returns null instead of throwing — for endpoints that stay public for an anonymous caller. */
+    public static UUID idOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        try {
+            return UUID.fromString(auth.getName());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     public static boolean hasRole(String role) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return auth != null && auth.getAuthorities().stream()

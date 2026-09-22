@@ -78,6 +78,13 @@ public class SecurityConfig {
                         // read surface like business browse/search above — posting, reacting,
                         // commenting, and editing still fall through to anyRequest().authenticated().
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/community/**").permitAll()
+                        // Offers — public browse/detail only (deliberately NOT a blanket
+                        // /api/v1/offers/** — that would also permitAll /admin/queue,
+                        // /claims/mine, /saved/mine, which must stay behind anyRequest()
+                        // .authenticated() below; those single-segment patterns cover just
+                        // GET /offers, /offers/{id}, and /offers/business/{id}).
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/offers", "/api/v1/offers/*", "/api/v1/offers/business/*").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

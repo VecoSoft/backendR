@@ -49,6 +49,32 @@ public class BusinessController {
         return ResponseEntity.accepted().build();
     }
 
+    /** Owner-only: full-replace the structured weekly hours used for "open now" (see OperatingHoursEntry). */
+    @PutMapping("/{id}/hours")
+    public ResponseEntity<List<OperatingHoursEntry>> replaceHours(@PathVariable UUID id,
+                                                                   @Valid @RequestBody ReplaceOperatingHoursRequest request) {
+        return ResponseEntity.ok(businessService.replaceOperatingHours(CurrentUser.id(), id, request));
+    }
+
+    /** Owner-only: holiday / special-hours overrides — per-item CRUD (see HoursExceptionEntry). */
+    @PostMapping("/{id}/hours-exceptions")
+    public ResponseEntity<HoursExceptionEntry> addHoursException(@PathVariable UUID id,
+                                                                  @Valid @RequestBody HoursExceptionRequest request) {
+        return ResponseEntity.ok(businessService.addHoursException(CurrentUser.id(), id, request));
+    }
+
+    @PutMapping("/{id}/hours-exceptions/{exceptionId}")
+    public ResponseEntity<HoursExceptionEntry> updateHoursException(@PathVariable UUID id, @PathVariable UUID exceptionId,
+                                                                     @Valid @RequestBody HoursExceptionRequest request) {
+        return ResponseEntity.ok(businessService.updateHoursException(CurrentUser.id(), id, exceptionId, request));
+    }
+
+    @DeleteMapping("/{id}/hours-exceptions/{exceptionId}")
+    public ResponseEntity<Void> deleteHoursException(@PathVariable UUID id, @PathVariable UUID exceptionId) {
+        businessService.deleteHoursException(CurrentUser.id(), id, exceptionId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{slug}")
     public ResponseEntity<BusinessResponse> getBySlug(@PathVariable String slug) {
         return ResponseEntity.ok(businessService.getBySlug(slug));

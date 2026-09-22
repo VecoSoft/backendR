@@ -33,6 +33,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     List<UUID> findIdsByIdInAndRole(@Param("ids") Collection<UUID> ids, @Param("role") UserRole role);
 
     // -----------------------------------------------------------------
+    // "Join Community" pseudonymous identity — see community.CommunityUsernameService.
+    // -----------------------------------------------------------------
+    boolean existsByCommunityUsernameIgnoreCase(String communityUsername);
+
+    Optional<User> findByCommunityUsernameIgnoreCase(String communityUsername);
+
+    // -----------------------------------------------------------------
     // Admin panel (com.bdreview.platform.admin) — read-side search/listing
     // only; account mutation still goes through UserRepository#save as
     // everywhere else in the codebase.

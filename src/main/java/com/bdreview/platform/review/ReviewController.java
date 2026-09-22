@@ -77,8 +77,21 @@ public class ReviewController {
     public ResponseEntity<PageResponse<ReviewResponse>> ownerDashboard(
             @PathVariable UUID businessId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        var results = reviewService.ownerDashboardList(businessId, page, size).map(this::toResponse);
+        var results = reviewService.ownerDashboardList(CurrentUser.id(), businessId, page, size).map(this::toResponse);
         return ResponseEntity.ok(PageResponse.of(results));
+    }
+
+    /** Public owner reply ("Response from the owner") — owner-only, no moderation step. */
+    @PutMapping("/{id}/reply")
+    public ResponseEntity<ReviewResponse> reply(@PathVariable UUID id, @Valid @RequestBody ReplyToReviewRequest request) {
+        Review review = reviewService.reply(CurrentUser.id(), id, request);
+        return ResponseEntity.ok(toResponse(review));
+    }
+
+    @DeleteMapping("/{id}/reply")
+    public ResponseEntity<ReviewResponse> removeReply(@PathVariable UUID id) {
+        Review review = reviewService.removeReply(CurrentUser.id(), id);
+        return ResponseEntity.ok(toResponse(review));
     }
 
     /** Business detail page "Overall rating" bar chart — public, no auth required. */

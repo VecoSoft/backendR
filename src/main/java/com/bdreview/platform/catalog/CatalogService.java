@@ -35,17 +35,20 @@ public class CatalogService {
     private final TeamMemberRepository teamRepository;
     private final MenuItemRepository menuRepository;
     private final FeaturedProductRepository productRepository;
+    private final FaqRepository faqRepository;
 
     public CatalogService(BusinessRepository businessRepository,
                           ServiceOfferingRepository serviceRepository,
                           TeamMemberRepository teamRepository,
                           MenuItemRepository menuRepository,
-                          FeaturedProductRepository productRepository) {
+                          FeaturedProductRepository productRepository,
+                          FaqRepository faqRepository) {
         this.businessRepository = businessRepository;
         this.serviceRepository = serviceRepository;
         this.teamRepository = teamRepository;
         this.menuRepository = menuRepository;
         this.productRepository = productRepository;
+        this.faqRepository = faqRepository;
     }
 
     // ================================================================
@@ -279,6 +282,58 @@ public class CatalogService {
         List<FeaturedProduct> rows = productRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
         applyReorder(rows, orderedIds, FeaturedProduct::getId, FeaturedProduct::setSortOrder, productRepository);
         return productRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    }
+
+    // ================================================================
+    // FAQ (business_faq) — business-wide, not category-scoped
+    // ================================================================
+    @Transactional(readOnly = true)
+    public List<Faq> faqs(UUID businessId) {
+        return faqRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    }
+
+    @Transactional
+    public Faq addFaq(UUID ownerUserId, UUID businessId, FaqRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        long existing = faqRepository.countByBusinessId(businessId);
+        if (existing >= MAX_PER_MODULE) {
+            throw new BadRequestException("This list is full (max " + MAX_PER_MODULE + ").");
+        }
+        return faqRepository.save(Faq.builder()
+                .businessId(businessId)
+                .question(req.question().trim())
+                .answer(req.answer().trim())
+                .sortOrder((int) existing)
+                .build());
+    }
+
+    @Transactional
+    public Faq updateFaq(UUID ownerUserId, UUID businessId, UUID id, FaqRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        Faq row = ownedRow(faqRepository.findById(id), businessId, Faq::getBusinessId);
+        row.setQuestion(req.question().trim());
+        row.setAnswer(req.answer().trim());
+        return faqRepository.save(row);
+    }
+
+    @Transactional
+    public void deleteFaq(UUID ownerUserId, UUID businessId, UUID id) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        faqRepository.deleteByIdAndBusinessId(id, businessId);
+    }
+
+    @Transactional
+    public List<Faq> reorderFaqs(UUID ownerUserId, UUID businessId, List<UUID> orderedIds) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        List<Faq> rows = faqRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+        applyReorder(rows, orderedIds, Faq::getId, Faq::setSortOrder, faqRepository);
+        return faqRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    }
+
+    /** FAQ is business-wide, not part of CategoryModuleFlags — a cheap EXISTS so the public page can decide whether to show it, same idea as BusinessUpdateService#hasPublished. */
+    @Transactional(readOnly = true)
+    public boolean hasFaq(UUID businessId) {
+        return faqRepository.existsByBusinessId(businessId);
     }
 
     // ================================================================

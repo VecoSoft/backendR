@@ -13,6 +13,7 @@ public record CreateBusinessRequest(
         @NotBlank String contactNumber,
         String operatingHours,
         String description,
+        Integer establishedYear,
         String coverPhotoUrl,
         String logoUrl,
         @NotNull @DecimalMin("-90.0") @DecimalMax("90.0") Double latitude,

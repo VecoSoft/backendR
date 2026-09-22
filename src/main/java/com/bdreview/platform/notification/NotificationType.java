@@ -21,5 +21,12 @@ public enum NotificationType {
     // "Join Community" feed — see community.CommunityPostService
     COMMUNITY_POST_COMMENT,
     COMMUNITY_POST_REACTION,
-    COMMUNITY_POST_MENTION
+    COMMUNITY_POST_MENTION,
+    COMMUNITY_COMMENT_REPLY,
+    COMMUNITY_BEST_ANSWER,
+    // Offers — see offer.OfferService/OfferNotifier
+    OFFER_CLAIMED,
+    OFFER_REDEEMED,
+    OFFER_APPROVED,
+    OFFER_REJECTED
 }

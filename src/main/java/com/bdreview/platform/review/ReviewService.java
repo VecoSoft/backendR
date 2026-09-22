@@ -168,9 +168,46 @@ public class ReviewService {
     }
 
     /** §7 owner dashboard: full list including NOT_RECOMMENDED, excluding only HIDDEN/soft-deleted handled by repo. */
-    public Page<Review> ownerDashboardList(UUID businessId, int page, int size) {
+    public Page<Review> ownerDashboardList(UUID ownerUserId, UUID businessId, int page, int size) {
+        getOwnedBusinessOrThrow(ownerUserId, businessId);
         return reviewRepository.findByBusinessIdAndDeletedAtIsNull(
                 businessId, PageRequest.of(page, PageRequestDefaults.clamp(size)));
+    }
+
+    /**
+     * Public owner reply (Google/Yelp-style "Response from the owner") — a direct
+     * owner-authenticated write, no moderation step, same as every other owner
+     * action in this codebase (e.g. BusinessService#update).
+     */
+    @Transactional
+    public Review reply(UUID ownerUserId, UUID reviewId, ReplyToReviewRequest request) {
+        Review review = reviewRepository.findByIdAndDeletedAtIsNull(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+        getOwnedBusinessOrThrow(ownerUserId, review.getBusinessId());
+        review.setOwnerReply(request.reply().trim());
+        review.setOwnerRepliedAt(Instant.now());
+        return reviewRepository.save(review);
+    }
+
+    @Transactional
+    public Review removeReply(UUID ownerUserId, UUID reviewId) {
+        Review review = reviewRepository.findByIdAndDeletedAtIsNull(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException("Review not found"));
+        getOwnedBusinessOrThrow(ownerUserId, review.getBusinessId());
+        review.setOwnerReply(null);
+        review.setOwnerRepliedAt(null);
+        return reviewRepository.save(review);
+    }
+
+    /** Shared by the owner dashboard listing and the reply endpoints — Review only carries businessId, not an owner user id. */
+    private Business getOwnedBusinessOrThrow(UUID ownerUserId, UUID businessId) {
+        Business business = businessRepository.findById(businessId)
+                .filter(b -> !b.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Business not found"));
+        if (!business.getOwnerUserId().equals(ownerUserId)) {
+            throw new ForbiddenException("You do not own this business listing");
+        }
+        return business;
     }
 
     public Page<Review> myReviews(UUID userId, int page, int size) {

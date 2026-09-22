@@ -37,6 +37,15 @@ public class User {
     @Column(name = "profile_photo_url", columnDefinition = "text")
     private String profilePhotoUrl;
 
+    /**
+     * Public, pseudonymous identity used only inside "Join Community" — kept
+     * deliberately separate from {@link #name} (private/account identity).
+     * Unique case-insensitively (see V33's functional index), nullable until
+     * the user completes the Community username setup flow.
+     */
+    @Column(name = "community_username", length = 20)
+    private String communityUsername;
+
     @Builder.Default
     @Column(name = "preferred_language", nullable = false, length = 10)
     private String preferredLanguage = "en";

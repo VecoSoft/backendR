@@ -41,8 +41,24 @@ public class CommunityNotifier {
     @Async
     public void newReaction(UUID postAuthorUserId, UUID postId) {
         notifications.create(postAuthorUserId, NotificationType.COMMUNITY_POST_REACTION,
-                "New reaction on your post",
-                "Someone reacted to your community post.",
+                "New vote on your post",
+                "Someone voted on your community post.",
                 "community_post", postId, NotificationChannel.IN_APP);
+    }
+
+    @Async
+    public void commentReplied(UUID commentAuthorUserId, UUID postId, UUID commentId) {
+        notifications.create(commentAuthorUserId, NotificationType.COMMUNITY_COMMENT_REPLY,
+                "New reply to your comment",
+                "Someone replied to your comment on a community post.",
+                "community_post_comment", commentId, NotificationChannel.IN_APP);
+    }
+
+    @Async
+    public void bestAnswerMarked(UUID answerAuthorUserId, UUID postId, UUID commentId) {
+        notifications.create(answerAuthorUserId, NotificationType.COMMUNITY_BEST_ANSWER,
+                "Your answer was marked as best",
+                "The question's author picked your answer as the best one.",
+                "community_post_comment", commentId, NotificationChannel.IN_APP);
     }
 }

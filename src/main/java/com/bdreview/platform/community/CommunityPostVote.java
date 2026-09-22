@@ -7,18 +7,17 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * At most ONE reaction per (post, user) — unlike business.BusinessReaction
- * (which lets a user hold Like AND Love AND Wow simultaneously), a Facebook
- * post reaction is a single choice: reacting again with a different type
- * swaps it, reacting again with the same type removes it. See
- * CommunityPostService#react.
+ * At most ONE vote per (post, user) — Reddit-style: voting again with the
+ * same type removes it, voting the other way swaps it. Formerly
+ * CommunityPostReaction (6-value Facebook reactions); renamed+remapped to a
+ * 2-value upvote/downvote in V33. See CommunityPostService#vote.
  */
 @Entity
-@Table(name = "community_post_reaction", uniqueConstraints =
+@Table(name = "community_post_vote", uniqueConstraints =
         @UniqueConstraint(columnNames = {"post_id", "user_id"}))
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
-public class CommunityPostReaction {
+public class CommunityPostVote {
 
     @Id
     @GeneratedValue
@@ -31,8 +30,8 @@ public class CommunityPostReaction {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "reaction_type", nullable = false, length = 10)
-    private CommunityPostReactionType reactionType;
+    @Column(name = "vote_type", nullable = false, length = 10)
+    private CommunityPostVoteType voteType;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

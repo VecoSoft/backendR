@@ -58,6 +58,10 @@ public class Business {
     @Column(columnDefinition = "text")
     private String description;
 
+    /** Optional trust-building field, "Since {year}" — nullable, no upper/lower bound enforced at the column level (see BusinessService validation). */
+    @Column(name = "established_year")
+    private Integer establishedYear;
+
     @Column(name = "cover_photo_url", columnDefinition = "text")
     private String coverPhotoUrl;
 

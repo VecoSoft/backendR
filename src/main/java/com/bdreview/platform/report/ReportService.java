@@ -6,11 +6,17 @@ import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.RateLimitExceededException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.community.CommunityPost;
+import com.bdreview.platform.community.CommunityPostComment;
+import com.bdreview.platform.community.CommunityPostCommentRepository;
+import com.bdreview.platform.community.CommunityPostRepository;
 import com.bdreview.platform.moderation.AuditLogService;
 import com.bdreview.platform.moderation.ModerationService;
 import com.bdreview.platform.notification.NotificationChannel;
 import com.bdreview.platform.notification.NotificationService;
 import com.bdreview.platform.notification.NotificationType;
+import com.bdreview.platform.offer.Offer;
+import com.bdreview.platform.offer.OfferRepository;
 import com.bdreview.platform.review.Review;
 import com.bdreview.platform.review.ReviewRepository;
 import com.bdreview.platform.review.VisibilityStatus;
@@ -46,6 +52,9 @@ public class ReportService {
     private final ReportRepository reportRepository;
     private final ReviewRepository reviewRepository;
     private final BusinessRepository businessRepository;
+    private final CommunityPostRepository communityPostRepository;
+    private final CommunityPostCommentRepository communityPostCommentRepository;
+    private final OfferRepository offerRepository;
     private final ModerationService moderationService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
@@ -59,6 +68,9 @@ public class ReportService {
     public ReportService(ReportRepository reportRepository,
                           ReviewRepository reviewRepository,
                           BusinessRepository businessRepository,
+                          CommunityPostRepository communityPostRepository,
+                          CommunityPostCommentRepository communityPostCommentRepository,
+                          OfferRepository offerRepository,
                           ModerationService moderationService,
                           AuditLogService auditLogService,
                           NotificationService notificationService,
@@ -71,6 +83,9 @@ public class ReportService {
         this.reportRepository = reportRepository;
         this.reviewRepository = reviewRepository;
         this.businessRepository = businessRepository;
+        this.communityPostRepository = communityPostRepository;
+        this.communityPostCommentRepository = communityPostCommentRepository;
+        this.offerRepository = offerRepository;
         this.moderationService = moderationService;
         this.auditLogService = auditLogService;
         this.notificationService = notificationService;
@@ -170,27 +185,61 @@ public class ReportService {
         UUID adminId = CurrentUser.id();
         Instant now = Instant.now();
 
-        // "Target owner" = the review's author for a REVIEW report, or the business's owner for a
-        // LISTING report — whoever's content/listing the report was actually about.
+        // "Target owner" = whoever's content/listing the report was actually about — the review's
+        // author, the business's owner, or a community post/comment's author.
         UUID targetOwnerId = null;
         if (outcome == ReportStatus.ACTION_TAKEN) {
-            if (report.getTargetType() == ReportTargetType.REVIEW) {
-                targetOwnerId = reviewRepository.findByIdAndDeletedAtIsNull(report.getTargetId())
-                        .map(Review::getUserId)
-                        .orElse(null);
-                // Reuse the existing moderation override rather than duplicating the
-                // visibility/rating-aggregate reconciliation logic.
-                moderationService.resolveFlaggedReview(report.getTargetId(), VisibilityStatus.HIDDEN, adminId, resolutionNote);
-            } else {
-                // LISTING: a confirmed violation actually flags the listing — a visible, public
-                // warning carrying the report's reason, not just a notification with no real
-                // effect. Admins can still soft-delete the listing manually from the Businesses
-                // admin screen if the situation warrants going further than a flag.
-                targetOwnerId = businessRepository.findById(report.getTargetId())
-                        .map(Business::getOwnerUserId)
-                        .orElse(null);
-                businessRepository.flag(report.getTargetId(), report.getReason().name(), now);
-            }
+            targetOwnerId = switch (report.getTargetType()) {
+                case REVIEW -> {
+                    UUID owner = reviewRepository.findByIdAndDeletedAtIsNull(report.getTargetId())
+                            .map(Review::getUserId)
+                            .orElse(null);
+                    // Reuse the existing moderation override rather than duplicating the
+                    // visibility/rating-aggregate reconciliation logic.
+                    moderationService.resolveFlaggedReview(report.getTargetId(), VisibilityStatus.HIDDEN, adminId, resolutionNote);
+                    yield owner;
+                }
+                case LISTING -> {
+                    // A confirmed violation actually flags the listing — a visible, public
+                    // warning carrying the report's reason, not just a notification with no real
+                    // effect. Admins can still soft-delete the listing manually from the
+                    // Businesses admin screen if the situation warrants going further than a flag.
+                    UUID owner = businessRepository.findById(report.getTargetId())
+                            .map(Business::getOwnerUserId)
+                            .orElse(null);
+                    businessRepository.flag(report.getTargetId(), report.getReason().name(), now);
+                    yield owner;
+                }
+                case COMMUNITY_POST -> {
+                    // Same soft-delete an author's own "delete post" already performs.
+                    UUID owner = communityPostRepository.findByIdAndDeletedAtIsNull(report.getTargetId())
+                            .map(CommunityPost::getAuthorUserId)
+                            .orElse(null);
+                    communityPostRepository.softDelete(report.getTargetId(), now);
+                    yield owner;
+                }
+                case COMMUNITY_COMMENT -> {
+                    // Same soft-delete an author's own "delete comment" already performs,
+                    // including the parent post's comment_count adjustment.
+                    CommunityPostComment comment = communityPostCommentRepository
+                            .findByIdAndDeletedAtIsNull(report.getTargetId()).orElse(null);
+                    if (comment != null) {
+                        communityPostCommentRepository.softDelete(comment.getId(), now);
+                        communityPostRepository.adjustCommentCount(comment.getPostId(), -1);
+                    }
+                    yield comment == null ? null : comment.getAuthorUserId();
+                }
+                case OFFER -> {
+                    // Same status transition the owner's own "cancel offer" action performs.
+                    Offer offer = offerRepository.findById(report.getTargetId()).orElse(null);
+                    UUID owner = offer == null ? null
+                            : businessRepository.findById(offer.getBusinessId()).map(Business::getOwnerUserId).orElse(null);
+                    if (offer != null) {
+                        offerRepository.cancel(offer.getId());
+                    }
+                    yield owner;
+                }
+            };
         }
 
         report.setStatus(outcome);
@@ -251,22 +300,40 @@ public class ReportService {
         // Discloses the report's fixed reason category (SPAM/FAKE/OFFENSIVE/OTHER) so the target
         // owner understands *what kind* of violation was found — still never the admin's private
         // resolution note or which specific report/signal triggered it.
-        if (targetType == ReportTargetType.REVIEW) {
-            String title = "Review removed";
-            String body = "One of your reviews was removed for " + reason.label() + ". "
-                    + "Please review our community guidelines.";
-            notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
-                    "REVIEW", targetId, NotificationChannel.IN_APP);
-            notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
-                    "REVIEW", targetId, NotificationChannel.SMS);
-        } else {
-            String title = "Listing flagged";
-            String body = "Your business listing was flagged for " + reason.label() + " following a user report. "
-                    + "Please review our community guidelines to keep your listing active.";
-            notificationService.create(targetOwnerId, NotificationType.LISTING_FLAGGED, title, body,
-                    "BUSINESS", targetId, NotificationChannel.IN_APP);
-            notificationService.create(targetOwnerId, NotificationType.LISTING_FLAGGED, title, body,
-                    "BUSINESS", targetId, NotificationChannel.SMS);
+        switch (targetType) {
+            case REVIEW -> {
+                String title = "Review removed";
+                String body = "One of your reviews was removed for " + reason.label() + ". "
+                        + "Please review our community guidelines.";
+                notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
+                        "REVIEW", targetId, NotificationChannel.IN_APP);
+                notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
+                        "REVIEW", targetId, NotificationChannel.SMS);
+            }
+            case LISTING -> {
+                String title = "Listing flagged";
+                String body = "Your business listing was flagged for " + reason.label() + " following a user report. "
+                        + "Please review our community guidelines to keep your listing active.";
+                notificationService.create(targetOwnerId, NotificationType.LISTING_FLAGGED, title, body,
+                        "BUSINESS", targetId, NotificationChannel.IN_APP);
+                notificationService.create(targetOwnerId, NotificationType.LISTING_FLAGGED, title, body,
+                        "BUSINESS", targetId, NotificationChannel.SMS);
+            }
+            case COMMUNITY_POST, COMMUNITY_COMMENT -> {
+                String noun = targetType == ReportTargetType.COMMUNITY_POST ? "post" : "comment";
+                String title = "Community " + noun + " removed";
+                String body = "Your community " + noun + " was removed for " + reason.label() + ". "
+                        + "Please review our community guidelines.";
+                notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
+                        "COMMUNITY_" + noun.toUpperCase(java.util.Locale.ROOT), targetId, NotificationChannel.IN_APP);
+            }
+            case OFFER -> {
+                String title = "Offer cancelled";
+                String body = "Your offer was cancelled for " + reason.label() + ". "
+                        + "Please review our community guidelines.";
+                notificationService.create(targetOwnerId, NotificationType.CONTENT_HIDDEN, title, body,
+                        "OFFER", targetId, NotificationChannel.IN_APP);
+            }
         }
     }
 }

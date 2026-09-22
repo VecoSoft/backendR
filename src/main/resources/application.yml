@@ -80,6 +80,11 @@ app:
     # new reports jump to HIGH priority so admins see multi-reporter targets first — the
     # outcome itself still always requires an admin's manual decision.
     high-priority-report-count-threshold: 3
+  community:
+    # "Join Community" V1 spam protection — same @Value-injected-threshold
+    # pattern as otp/report above, no framework rate limiter.
+    max-posts-per-hour: 20
+    max-comments-per-hour: 60
   ml-service:
     # Python FastAPI/LangGraph microservice — see /ml-service in the project root
     base-url: ${ML_SERVICE_BASE_URL:http://localhost:8081}

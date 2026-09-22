@@ -105,6 +105,13 @@ public final class CatalogRequests {
     ) {
     }
 
+    /** Business-wide FAQ entry — not category-scoped, unlike the modules above. */
+    public record FaqRequest(
+            @NotBlank @Size(max = 300) String question,
+            @NotBlank String answer
+    ) {
+    }
+
     /** New full order for a module list — every current row id, once each. */
     public record ReorderRequest(@NotEmpty List<UUID> orderedIds) {
     }

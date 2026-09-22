@@ -26,6 +26,9 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     Page<Review> findByUserIdAndDeletedAtIsNull(UUID userId, Pageable pageable);
 
+    /** Trust-signal review count (community author summary, community profile page). */
+    long countByUserIdAndDeletedAtIsNull(UUID userId);
+
     Optional<Review> findByIdAndDeletedAtIsNull(UUID id);
 
     /** One review per user per business (Yelp-style) — used both to surface "your review" and to block duplicates. */
@@ -105,6 +108,19 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     /** Count of reviews since the last cached summary was generated (drives §15 trigger at "every 10 new"). */
     long countByBusinessIdAndDeletedAtIsNullAndCreatedAtAfter(UUID businessId, Instant since);
+
+    /**
+     * Community feed trust signal ("N reviews" on a post/comment author) —
+     * one grouped query per page rather than a per-author round trip. Row
+     * shape: [UUID userId, Long count].
+     */
+    @Query("""
+            SELECT r.userId, COUNT(r)
+            FROM Review r
+            WHERE r.userId IN :userIds AND r.deletedAt IS NULL
+            GROUP BY r.userId
+            """)
+    List<Object[]> countGroupedByUserId(@Param("userIds") List<UUID> userIds);
 
     // -----------------------------------------------------------------
     // Admin panel (com.bdreview.platform.admin) — full moderation listing

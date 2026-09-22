@@ -55,7 +55,12 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
     // §3 Search + Filter — combinable filters, GPS "near me" via PostGIS
     // ST_DWithin/ST_Distance against the GiST-indexed geography column.
     // Null parameters are treated as "no filter" (see COALESCE guards).
-    // Sort options: relevance | rating | distance | newest | most_reviewed.
+    // Sort options: relevance | rating | distance | newest | most_reviewed |
+    // most_loved | trending. most_loved/trending are homepage-carousel-only
+    // (not exposed in the manual filter UI) — trending counts business_reaction_event
+    // rows (V37) in the last 7 days, an append-only log kept separate from the
+    // toggled/deletable business_reaction table so a "how much activity this
+    // week" query is actually answerable; see BusinessService#react.
     //
     // `q`/`location` are the free-text search-bar fields (spec: one search
     // box + one location box, no forced category/city/area dropdowns).
@@ -110,6 +115,11 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
               CASE WHEN :sort = 'rating'        THEN b.average_rating END DESC NULLS LAST,
               CASE WHEN :sort = 'most_reviewed'  THEN b.review_count END DESC NULLS LAST,
               CASE WHEN :sort = 'newest'         THEN b.created_at END DESC NULLS LAST,
+              CASE WHEN :sort = 'most_loved'     THEN b.total_love_count END DESC NULLS LAST,
+              CASE WHEN :sort = 'trending' THEN
+                (SELECT count(*) FROM business_reaction_event bre
+                  WHERE bre.business_id = b.id AND bre.created_at >= now() - interval '7 days')
+              END DESC NULLS LAST,
               CASE WHEN :sort = 'distance' AND :lat IS NOT NULL
                    THEN ST_Distance(b.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) END ASC NULLS LAST
             """,

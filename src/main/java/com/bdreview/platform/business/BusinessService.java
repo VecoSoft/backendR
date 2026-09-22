@@ -51,6 +51,9 @@ public class BusinessService {
     private final NotificationService notificationService;
     private final BusinessPhotoRepository businessPhotoRepository;
     private final BusinessReactionRepository businessReactionRepository;
+    private final BusinessReactionEventRepository businessReactionEventRepository;
+    private final BusinessOperatingHoursRepository businessOperatingHoursRepository;
+    private final BusinessHoursExceptionRepository businessHoursExceptionRepository;
     private final com.bdreview.platform.catalog.CatalogService catalogService;
     private final com.bdreview.platform.updates.BusinessUpdateService businessUpdateService;
     private final BusinessService self;
@@ -64,6 +67,9 @@ public class BusinessService {
                            NotificationService notificationService,
                            BusinessPhotoRepository businessPhotoRepository,
                            BusinessReactionRepository businessReactionRepository,
+                           BusinessReactionEventRepository businessReactionEventRepository,
+                           BusinessOperatingHoursRepository businessOperatingHoursRepository,
+                           BusinessHoursExceptionRepository businessHoursExceptionRepository,
                            com.bdreview.platform.catalog.CatalogService catalogService,
                            com.bdreview.platform.updates.BusinessUpdateService businessUpdateService,
                            @Lazy BusinessService self) {
@@ -76,6 +82,9 @@ public class BusinessService {
         this.notificationService = notificationService;
         this.businessPhotoRepository = businessPhotoRepository;
         this.businessReactionRepository = businessReactionRepository;
+        this.businessReactionEventRepository = businessReactionEventRepository;
+        this.businessOperatingHoursRepository = businessOperatingHoursRepository;
+        this.businessHoursExceptionRepository = businessHoursExceptionRepository;
         this.catalogService = catalogService;
         this.businessUpdateService = businessUpdateService;
         this.self = self;
@@ -95,6 +104,8 @@ public class BusinessService {
         Set<BusinessAttribute> attributes = request.attributeIds() == null ? new HashSet<>()
                 : new HashSet<>(attributeRepository.findByIdIn(request.attributeIds()));
 
+        validateEstablishedYear(request.establishedYear());
+
         Business business = Business.builder()
                 .ownerUserId(ownerUserId)
                 .name(request.name())
@@ -105,6 +116,7 @@ public class BusinessService {
                 .contactNumber(PhoneNumberUtils.normalize(request.contactNumber()))
                 .operatingHours(request.operatingHours())
                 .description(request.description())
+                .establishedYear(request.establishedYear())
                 .coverPhotoUrl(request.coverPhotoUrl())
                 .logoUrl(request.logoUrl())
                 .websiteUrl(blankToNull(request.websiteUrl()))
@@ -134,6 +146,8 @@ public class BusinessService {
         Set<BusinessAttribute> attributes = request.attributeIds() == null ? new HashSet<>()
                 : new HashSet<>(attributeRepository.findByIdIn(request.attributeIds()));
 
+        validateEstablishedYear(request.establishedYear());
+
         business.setName(request.name());
         business.setCategory(category);
         business.setCity(city);
@@ -141,6 +155,7 @@ public class BusinessService {
         business.setContactNumber(PhoneNumberUtils.normalize(request.contactNumber()));
         business.setOperatingHours(request.operatingHours());
         business.setDescription(request.description());
+        business.setEstablishedYear(request.establishedYear());
         business.setCoverPhotoUrl(request.coverPhotoUrl());
         business.setLogoUrl(request.logoUrl());
         business.setWebsiteUrl(blankToNull(request.websiteUrl()));
@@ -211,6 +226,11 @@ public class BusinessService {
                     .userId(userId)
                     .reactionType(reactionType)
                     .build());
+            businessReactionEventRepository.save(BusinessReactionEvent.builder()
+                    .businessId(businessId)
+                    .userId(userId)
+                    .reactionType(reactionType)
+                    .build());
             adjustReactionCount(businessId, reactionType, 1);
         }
     }
@@ -224,6 +244,101 @@ public class BusinessService {
         }
     }
 
+    /**
+     * Full-replace, same shape as catalog.StaffScheduleService#replaceSchedule:
+     * validate every day, then delete-all + bulk-insert (never a partial patch).
+     * closeTime <= openTime (day not closed) is accepted as "crosses midnight",
+     * not rejected — only exact equality is invalid (ambiguous vs. closed/24h).
+     */
+    @Transactional
+    public List<OperatingHoursEntry> replaceOperatingHours(UUID ownerUserId, UUID businessId, ReplaceOperatingHoursRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+
+        Set<java.time.DayOfWeek> seen = java.util.EnumSet.noneOf(java.time.DayOfWeek.class);
+        for (OperatingHoursEntryRequest day : req.days()) {
+            if (!seen.add(day.dayOfWeek())) {
+                throw new BadRequestException("Each day of the week may only appear once.");
+            }
+            if (!day.closed()) {
+                if (day.openTime() == null || day.closeTime() == null) {
+                    throw new BadRequestException(day.dayOfWeek() + ": open and close time are required unless closed.");
+                }
+                if (day.openTime().equals(day.closeTime())) {
+                    throw new BadRequestException(day.dayOfWeek() + ": open and close time can't be the same.");
+                }
+            }
+        }
+
+        businessOperatingHoursRepository.deleteByBusinessId(businessId);
+        List<BusinessOperatingHours> rows = req.days().stream()
+                .map(d -> BusinessOperatingHours.builder()
+                        .businessId(businessId)
+                        .dayOfWeek(d.dayOfWeek())
+                        .closed(d.closed())
+                        .openTime(d.closed() ? null : d.openTime())
+                        .closeTime(d.closed() ? null : d.closeTime())
+                        .build())
+                .toList();
+        return businessOperatingHoursRepository.saveAll(rows).stream().map(OperatingHoursEntry::from).toList();
+    }
+
+    /**
+     * Holiday / special-hours overrides — per-item CRUD (not full-replace like the
+     * weekly hours above), since this list grows/shrinks over time rather than
+     * always holding exactly 7 rows. Same day/time validation shape.
+     */
+    @Transactional
+    public HoursExceptionEntry addHoursException(UUID ownerUserId, UUID businessId, HoursExceptionRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        validateHoursException(req);
+        BusinessHoursException saved = businessHoursExceptionRepository.save(BusinessHoursException.builder()
+                .businessId(businessId)
+                .startDate(req.startDate())
+                .endDate(req.endDate())
+                .closed(req.closed())
+                .openTime(req.closed() ? null : req.openTime())
+                .closeTime(req.closed() ? null : req.closeTime())
+                .reason(blankToNull(req.reason()))
+                .build());
+        return HoursExceptionEntry.from(saved);
+    }
+
+    @Transactional
+    public HoursExceptionEntry updateHoursException(UUID ownerUserId, UUID businessId, UUID id, HoursExceptionRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        validateHoursException(req);
+        BusinessHoursException row = businessHoursExceptionRepository.findById(id)
+                .filter(e -> e.getBusinessId().equals(businessId))
+                .orElseThrow(() -> new ResourceNotFoundException("Hours exception not found"));
+        row.setStartDate(req.startDate());
+        row.setEndDate(req.endDate());
+        row.setClosed(req.closed());
+        row.setOpenTime(req.closed() ? null : req.openTime());
+        row.setCloseTime(req.closed() ? null : req.closeTime());
+        row.setReason(blankToNull(req.reason()));
+        return HoursExceptionEntry.from(businessHoursExceptionRepository.save(row));
+    }
+
+    @Transactional
+    public void deleteHoursException(UUID ownerUserId, UUID businessId, UUID id) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        businessHoursExceptionRepository.deleteByIdAndBusinessId(id, businessId);
+    }
+
+    private void validateHoursException(HoursExceptionRequest req) {
+        if (req.endDate().isBefore(req.startDate())) {
+            throw new BadRequestException("End date must be on or after the start date.");
+        }
+        if (!req.closed()) {
+            if (req.openTime() == null || req.closeTime() == null) {
+                throw new BadRequestException("Open and close time are required unless closed.");
+            }
+            if (req.openTime().equals(req.closeTime())) {
+                throw new BadRequestException("Open and close time can't be the same.");
+            }
+        }
+    }
+
     @Transactional(readOnly = true)
     public BusinessResponse getBySlug(String slug) {
         Business business = businessRepository.findBySlugAndDeletedAtIsNull(slug)
@@ -233,10 +348,16 @@ public class BusinessService {
         // Detail view carries the category-module presence flags (one cheap EXISTS
         // per module) plus the has-updates flag so the public page can pick tabs
         // without loading any module or updates rows.
+        List<OperatingHoursEntry> structuredHours = businessOperatingHoursRepository.findByBusinessId(business.getId())
+                .stream().map(OperatingHoursEntry::from).toList();
+        List<HoursExceptionEntry> hoursExceptions = businessHoursExceptionRepository.findByBusinessIdOrderByStartDateAsc(business.getId())
+                .stream().map(HoursExceptionEntry::from).toList();
         return BusinessResponse.from(business, photoUrlsFor(business, galleryUrls),
                 isClaimed(business.getOwnerUserId()),
                 catalogService.moduleFlags(business.getId()),
-                businessUpdateService.hasPublished(business.getId()));
+                businessUpdateService.hasPublished(business.getId()),
+                catalogService.hasFaq(business.getId()),
+                structuredHours, hoursExceptions);
     }
 
     @Transactional(readOnly = true)
@@ -254,14 +375,25 @@ public class BusinessService {
                 claimedByOwner.getOrDefault(b.getOwnerUserId(), true)));
     }
 
+    /**
+     * Used by the owner edit workspace (BusinessForm), which needs the structured
+     * weekly hours to hydrate the OperatingHoursPicker on edit — unlike search()'s
+     * lean 3-arg from(), this passes structuredHours through (still bundled via
+     * a batched query, not N+1, since findByOwnerUserIdAndDeletedAtIsNull rarely
+     * returns more than a handful of rows per owner).
+     */
     @Transactional(readOnly = true)
     public List<BusinessResponse> myBusinesses(UUID ownerUserId) {
         List<Business> businesses = businessRepository.findByOwnerUserIdAndDeletedAtIsNull(ownerUserId);
         Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(businesses);
+        Map<UUID, List<OperatingHoursEntry>> hoursByBusiness = structuredHoursByBusiness(businesses);
+        Map<UUID, List<HoursExceptionEntry>> exceptionsByBusiness = hoursExceptionsByBusiness(businesses);
         boolean claimed = isClaimed(ownerUserId);
         return businesses.stream()
                 .map(b -> BusinessResponse.from(b,
-                        photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())), claimed))
+                        photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())), claimed,
+                        null, null, null, hoursByBusiness.getOrDefault(b.getId(), List.of()),
+                        exceptionsByBusiness.getOrDefault(b.getId(), List.of())))
                 .toList();
     }
 
@@ -294,6 +426,30 @@ public class BusinessService {
         return byBusiness;
     }
 
+    private Map<UUID, List<OperatingHoursEntry>> structuredHoursByBusiness(List<Business> businesses) {
+        List<UUID> ids = businesses.stream().map(Business::getId).toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, List<OperatingHoursEntry>> byBusiness = new HashMap<>();
+        for (BusinessOperatingHours h : businessOperatingHoursRepository.findByBusinessIdIn(ids)) {
+            byBusiness.computeIfAbsent(h.getBusinessId(), k -> new ArrayList<>()).add(OperatingHoursEntry.from(h));
+        }
+        return byBusiness;
+    }
+
+    private Map<UUID, List<HoursExceptionEntry>> hoursExceptionsByBusiness(List<Business> businesses) {
+        List<UUID> ids = businesses.stream().map(Business::getId).toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, List<HoursExceptionEntry>> byBusiness = new HashMap<>();
+        for (BusinessHoursException e : businessHoursExceptionRepository.findByBusinessIdIn(ids)) {
+            byBusiness.computeIfAbsent(e.getBusinessId(), k -> new ArrayList<>()).add(HoursExceptionEntry.from(e));
+        }
+        return byBusiness;
+    }
+
     /** A listing is "claimed" once its owner is a real (non-admin) user — mirrors BusinessClaimService#ensureClaimable. */
     private boolean isClaimed(UUID ownerUserId) {
         return userRepository.findById(ownerUserId).map(u -> u.getRole() != UserRole.ADMIN).orElse(true);
@@ -321,6 +477,15 @@ public class BusinessService {
         }
         ordered.addAll(galleryUrls);
         return ordered.stream().collect(Collectors.toList());
+    }
+
+    /** Upper bound is dynamic (current year), so this is manual validation rather than a bean-validation annotation. */
+    private void validateEstablishedYear(Integer establishedYear) {
+        if (establishedYear == null) return;
+        int currentYear = java.time.Year.now().getValue();
+        if (establishedYear < 1900 || establishedYear > currentYear) {
+            throw new BadRequestException("Established year must be between 1900 and " + currentYear + ".");
+        }
     }
 
     private Business getOwnedOrThrow(UUID requesterUserId, UUID businessId) {
