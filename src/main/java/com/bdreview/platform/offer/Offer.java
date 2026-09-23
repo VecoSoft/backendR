@@ -55,6 +55,10 @@ public class Offer {
     @Column(name = "image_url", columnDefinition = "text")
     private String imageUrl;
 
+    /** Optional — an existing menu item this offer's discount applies to (must belong to the same business). Null = the offer stands alone. See CatalogService#menu for how this overlays the item's displayed price while the offer is active. */
+    @Column(name = "menu_item_id")
+    private UUID menuItemId;
+
     @Column(name = "valid_from", nullable = false)
     private Instant validFrom;
 

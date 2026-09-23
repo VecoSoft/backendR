@@ -23,6 +23,10 @@ public record OfferResponse(
         String description,
         String termsAndConditions,
         String imageUrl,
+        /** Optional — the existing menu item this offer's discount applies to. Null = the offer stands alone. */
+        UUID menuItemId,
+        /** Denormalized for display — null whenever menuItemId is null. */
+        String menuItemName,
         Instant validFrom,
         Instant validUntil,
         OfferAvailability availability,

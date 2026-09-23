@@ -6,6 +6,8 @@ import com.bdreview.platform.catalog.CatalogRequests.*;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.offer.Offer;
+import com.bdreview.platform.offer.OfferRepository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,19 +38,22 @@ public class CatalogService {
     private final MenuItemRepository menuRepository;
     private final FeaturedProductRepository productRepository;
     private final FaqRepository faqRepository;
+    private final OfferRepository offerRepository;
 
     public CatalogService(BusinessRepository businessRepository,
                           ServiceOfferingRepository serviceRepository,
                           TeamMemberRepository teamRepository,
                           MenuItemRepository menuRepository,
                           FeaturedProductRepository productRepository,
-                          FaqRepository faqRepository) {
+                          FaqRepository faqRepository,
+                          OfferRepository offerRepository) {
         this.businessRepository = businessRepository;
         this.serviceRepository = serviceRepository;
         this.teamRepository = teamRepository;
         this.menuRepository = menuRepository;
         this.productRepository = productRepository;
         this.faqRepository = faqRepository;
+        this.offerRepository = offerRepository;
     }
 
     // ================================================================
@@ -178,7 +183,19 @@ public class CatalogService {
     // ================================================================
     @Transactional(readOnly = true)
     public List<MenuItem> menu(UUID businessId) {
-        return menuRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+        List<MenuItem> items = menuRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+        Map<UUID, Offer> activeOfferByMenuItemId = offerRepository.findByBusinessIdAndMenuItemIdIsNotNull(businessId)
+                .stream()
+                .filter(Offer::isCurrentlyActive)
+                .collect(java.util.stream.Collectors.toMap(Offer::getMenuItemId, Function.identity(), (a, b) -> a));
+        for (MenuItem item : items) {
+            Offer offer = activeOfferByMenuItemId.get(item.getId());
+            if (offer != null && offer.getOfferPrice() != null) {
+                item.setActiveOfferId(offer.getId());
+                item.setActiveOfferPrice(offer.getOfferPrice());
+            }
+        }
+        return items;
     }
 
     @Transactional

@@ -20,6 +20,9 @@ public interface OfferRepository extends JpaRepository<Offer, UUID> {
     /** Business-profile banner / "does this business currently have an active offer" — small result set, no paging needed. */
     List<Offer> findByBusinessIdAndStatusAndValidUntilAfterOrderByValidUntilAsc(UUID businessId, OfferStatus status, Instant now);
 
+    /** Menu-item price overlay — see CatalogService#menu. Filtered further in Java via Offer#isCurrentlyActive, which already lives on the entity. */
+    List<Offer> findByBusinessIdAndMenuItemIdIsNotNull(UUID businessId);
+
     /** Admin approval queue. */
     Page<Offer> findByStatusOrderByCreatedAtAsc(OfferStatus status, Pageable pageable);
 

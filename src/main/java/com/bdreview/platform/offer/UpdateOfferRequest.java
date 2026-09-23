@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.UUID;
 
 /** Same field set as CreateOfferRequest minus businessId, which never changes after creation. */
 public record UpdateOfferRequest(
@@ -21,6 +22,8 @@ public record UpdateOfferRequest(
         @NotNull Instant validUntil,
         @NotNull OfferAvailability availability,
         Integer maxTotalRedemptions,
-        Integer maxRedemptionsPerUser
+        Integer maxRedemptionsPerUser,
+        /** Optional — an existing menu item (same business) this offer's discount applies to. */
+        UUID menuItemId
 ) {
 }

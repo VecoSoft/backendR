@@ -28,6 +28,8 @@ public record CreateOfferRequest(
         @NotNull Instant validUntil,
         @NotNull OfferAvailability availability,
         Integer maxTotalRedemptions,
-        Integer maxRedemptionsPerUser
+        Integer maxRedemptionsPerUser,
+        /** Optional — an existing menu item (same business) this offer's discount applies to. */
+        UUID menuItemId
 ) {
 }

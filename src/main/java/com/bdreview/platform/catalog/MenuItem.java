@@ -69,6 +69,17 @@ public class MenuItem {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * Populated by CatalogService#menu when an active Offer links to this item — never persisted
+     * (see V45's migration comment: the item's own {@link #price} is never overwritten, so it's
+     * exactly what this reverts to the moment the linked offer ends). Null when no offer applies.
+     */
+    @Transient
+    private UUID activeOfferId;
+
+    @Transient
+    private BigDecimal activeOfferPrice;
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

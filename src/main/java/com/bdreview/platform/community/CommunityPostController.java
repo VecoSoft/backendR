@@ -161,6 +161,30 @@ public class CommunityPostController {
         return ResponseEntity.ok(communityPostService.searchMentionCandidates(q));
     }
 
+    /** "Questions for you" widget — personalized, so logged-in only. */
+    @GetMapping("/questions/recommended")
+    public ResponseEntity<List<CommunityQuestionRecommendationResponse>> recommendedQuestions() {
+        return ResponseEntity.ok(communityPostService.recommendedQuestions(CurrentUser.id()));
+    }
+
+    @PostMapping("/posts/{postId}/follow-question")
+    public ResponseEntity<Void> followQuestion(@PathVariable UUID postId) {
+        communityPostService.followQuestion(CurrentUser.id(), postId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/posts/{postId}/follow-question")
+    public ResponseEntity<Void> unfollowQuestion(@PathVariable UUID postId) {
+        communityPostService.unfollowQuestion(CurrentUser.id(), postId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/posts/{postId}/pass")
+    public ResponseEntity<Void> passQuestion(@PathVariable UUID postId) {
+        communityPostService.passQuestion(CurrentUser.id(), postId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/users/{userId}/follow")
     public ResponseEntity<Void> follow(@PathVariable UUID userId) {
         communityPostService.follow(CurrentUser.id(), userId);

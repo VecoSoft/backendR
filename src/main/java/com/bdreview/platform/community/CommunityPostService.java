@@ -62,6 +62,8 @@ public class CommunityPostService {
     private final CommunityBusinessMentionRepository businessMentionRepository;
     private final CommunityPostPhotoRepository photoRepository;
     private final CommunityFollowRepository followRepository;
+    private final CommunityQuestionFollowRepository questionFollowRepository;
+    private final CommunityQuestionPassRepository questionPassRepository;
     private final CommunityPostPollRepository pollRepository;
     private final CommunityPostPollOptionRepository pollOptionRepository;
     private final CommunityPostPollVoteRepository pollVoteRepository;
@@ -82,6 +84,8 @@ public class CommunityPostService {
                                  CommunityBusinessMentionRepository businessMentionRepository,
                                  CommunityPostPhotoRepository photoRepository,
                                  CommunityFollowRepository followRepository,
+                                 CommunityQuestionFollowRepository questionFollowRepository,
+                                 CommunityQuestionPassRepository questionPassRepository,
                                  CommunityPostPollRepository pollRepository,
                                  CommunityPostPollOptionRepository pollOptionRepository,
                                  CommunityPostPollVoteRepository pollVoteRepository,
@@ -101,6 +105,8 @@ public class CommunityPostService {
         this.businessMentionRepository = businessMentionRepository;
         this.photoRepository = photoRepository;
         this.followRepository = followRepository;
+        this.questionFollowRepository = questionFollowRepository;
+        this.questionPassRepository = questionPassRepository;
         this.pollRepository = pollRepository;
         this.pollOptionRepository = pollOptionRepository;
         this.pollVoteRepository = pollVoteRepository;
@@ -706,6 +712,86 @@ public class CommunityPostService {
     }
 
     // -----------------------------------------------------------------
+    // "Questions for you" widget — following/passing a specific QUESTION post
+    // (see CommunityQuestionFollow/CommunityQuestionPass; distinct from the
+    // user-follows-user CommunityFollow below) and the recommendation list itself.
+    // -----------------------------------------------------------------
+
+    private static final int RECOMMENDED_QUESTIONS_LIMIT = 8;
+    /** Cards truncate a title-less question's body to this many characters for the headline. */
+    private static final int QUESTION_HEADLINE_MAX_LENGTH = 140;
+
+    @Transactional
+    public void followQuestion(UUID userId, UUID postId) {
+        requireQuestionPost(postId);
+        if (questionFollowRepository.existsByUserIdAndPostId(userId, postId)) {
+            return;
+        }
+        questionFollowRepository.save(CommunityQuestionFollow.builder().userId(userId).postId(postId).build());
+    }
+
+    @Transactional
+    public void unfollowQuestion(UUID userId, UUID postId) {
+        questionFollowRepository.deleteByUserIdAndPostId(userId, postId);
+    }
+
+    /** No undo in V1 — matches Quora's Pass, a quiet "don't show me this one again." */
+    @Transactional
+    public void passQuestion(UUID userId, UUID postId) {
+        requireQuestionPost(postId);
+        if (questionPassRepository.existsByUserIdAndPostId(userId, postId)) {
+            return;
+        }
+        questionPassRepository.save(CommunityQuestionPass.builder().userId(userId).postId(postId).build());
+    }
+
+    private CommunityPost requireQuestionPost(UUID postId) {
+        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (post.getPostType() != CommunityPostType.QUESTION) {
+            throw new BadRequestException("Only questions can be followed or passed");
+        }
+        return post;
+    }
+
+    /**
+     * Open questions this viewer hasn't asked, isn't already following/passed on, and
+     * hasn't already answered — ranked by topic affinity (topics the viewer themselves
+     * posts in) first, then most recent. A brand-new viewer with no post history yet
+     * gets every topic as their "affinity" set, which makes that ranking a no-op and
+     * falls through to pure recency.
+     */
+    public List<CommunityQuestionRecommendationResponse> recommendedQuestions(UUID viewerId) {
+        List<CommunityTopic> authoredTopics = postRepository.findDistinctTopicsByAuthor(viewerId);
+        Collection<CommunityTopic> affinityTopics = authoredTopics.isEmpty()
+                ? EnumSet.allOf(CommunityTopic.class)
+                : EnumSet.copyOf(authoredTopics);
+        List<CommunityPost> candidates = postRepository.findRecommendedQuestions(
+                CommunityPostType.QUESTION, viewerId, affinityTopics, PageRequest.of(0, RECOMMENDED_QUESTIONS_LIMIT));
+        return candidates.stream().map(this::toQuestionRecommendationResponse).toList();
+    }
+
+    private CommunityQuestionRecommendationResponse toQuestionRecommendationResponse(CommunityPost post) {
+        long followerCount = questionFollowRepository.countByPostId(post.getId());
+        Instant lastFollowedAt = questionFollowRepository.findTopByPostIdOrderByCreatedAtDesc(post.getId())
+                .map(CommunityQuestionFollow::getCreatedAt)
+                .orElse(null);
+        String headline = post.getTitle() != null && !post.getTitle().isBlank()
+                ? post.getTitle()
+                : truncate(post.getBody(), QUESTION_HEADLINE_MAX_LENGTH);
+        return new CommunityQuestionRecommendationResponse(
+                post.getId(), headline, post.getAnswerCount(), followerCount, lastFollowedAt);
+    }
+
+    private static String truncate(String text, int maxLength) {
+        if (text == null) {
+            return "";
+        }
+        String trimmed = text.trim();
+        return trimmed.length() > maxLength ? trimmed.substring(0, maxLength).trim() + "…" : trimmed;
+    }
+
+    // -----------------------------------------------------------------
     // Following — minimal user-follows-user (see CommunityFollow).
     // -----------------------------------------------------------------
 
@@ -924,7 +1010,7 @@ public class CommunityPostService {
         if (post.getClosedAt() != null) {
             return CommunityQuestionStatus.CLOSED;
         }
-        return hasBestAnswer ? CommunityQuestionStatus.ANSWERED : CommunityQuestionStatus.OPEN;
+        return hasBestAnswer ? CommunityQuestionStatus.RESOLVED : CommunityQuestionStatus.OPEN;
     }
 
     private CommunityCommentResponse toCommentResponse(CommunityPostComment comment, UUID viewerUserId) {

@@ -14,6 +14,8 @@ import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PageRequestDefaults;
 import com.bdreview.platform.common.ResourceNotFoundException;
 import com.bdreview.platform.notification.NotificationType;
+import com.bdreview.platform.offer.Offer;
+import com.bdreview.platform.offer.OfferRepository;
 import org.locationtech.jts.geom.Point;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +38,7 @@ public class OrderService {
     private final BusinessOrderItemRepository itemRepo;
     private final OrderStatusEventRepository eventRepo;
     private final MenuItemRepository menuRepo;
+    private final OfferRepository offerRepo;
     private final CommerceSettingsService settingsService;
     private final DeliveryZoneService zoneService;
     private final CommerceGuard guard;
@@ -43,12 +46,14 @@ public class OrderService {
 
     public OrderService(BusinessOrderRepository orderRepo, BusinessOrderItemRepository itemRepo,
                         OrderStatusEventRepository eventRepo, MenuItemRepository menuRepo,
+                        OfferRepository offerRepo,
                         CommerceSettingsService settingsService, DeliveryZoneService zoneService,
                         CommerceGuard guard, CommerceNotifier notifier) {
         this.orderRepo = orderRepo;
         this.itemRepo = itemRepo;
         this.eventRepo = eventRepo;
         this.menuRepo = menuRepo;
+        this.offerRepo = offerRepo;
         this.settingsService = settingsService;
         this.zoneService = zoneService;
         this.guard = guard;
@@ -74,6 +79,14 @@ public class OrderService {
             qtyById.merge(line.menuItemId(), line.quantity(), Integer::sum);
         }
 
+        // A menu item can be linked to an offer (see V45's migration) — while that offer is
+        // ACTIVE, this business's orders charge its discounted price instead of the item's own
+        // listed price. Batched once per business rather than a query per line.
+        Map<UUID, Offer> activeOfferByMenuItemId = offerRepo.findByBusinessIdAndMenuItemIdIsNotNull(businessId)
+                .stream()
+                .filter(Offer::isCurrentlyActive)
+                .collect(java.util.stream.Collectors.toMap(Offer::getMenuItemId, o -> o, (a, b) -> a));
+
         List<BusinessOrderItem> items = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         for (Map.Entry<UUID, Integer> e : qtyById.entrySet()) {
@@ -86,7 +99,9 @@ public class OrderService {
             if (!mi.isAvailable() || mi.getPrice() == null || mi.getPrice().signum() <= 0) {
                 throw new BadRequestException("\"" + mi.getName() + "\" is not available for ordering right now.");
             }
-            BigDecimal unit = money(mi.getPrice());
+            Offer activeOffer = activeOfferByMenuItemId.get(mi.getId());
+            BigDecimal unit = money(activeOffer != null && activeOffer.getOfferPrice() != null
+                    ? activeOffer.getOfferPrice() : mi.getPrice());
             int qty = e.getValue();
             BigDecimal lineTotal = unit.multiply(BigDecimal.valueOf(qty));
             subtotal = subtotal.add(lineTotal);

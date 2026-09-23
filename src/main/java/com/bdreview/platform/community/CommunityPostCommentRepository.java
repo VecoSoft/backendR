@@ -51,7 +51,7 @@ public interface CommunityPostCommentRepository extends JpaRepository<CommunityP
     // -----------------------------------------------------------------
 
     /**
-     * Batched existence check for a page of posts (feed's questionStatus=ANSWERED derivation)
+     * Batched existence check for a page of posts (feed's questionStatus=RESOLVED derivation)
      * — mirrors CommunityPostService#loadPolls' batching. Note: JPQL paths use the entity's
      * FIELD name (`bestAnswer`), not the Lombok-generated `isBestAnswer()` getter name.
      */

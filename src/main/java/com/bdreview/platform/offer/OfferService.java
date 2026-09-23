@@ -2,6 +2,8 @@ package com.bdreview.platform.offer;
 
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.business.BusinessRepository;
+import com.bdreview.platform.catalog.MenuItem;
+import com.bdreview.platform.catalog.MenuItemRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.ForbiddenException;
@@ -44,6 +46,7 @@ public class OfferService {
     private final OfferClaimRepository claimRepository;
     private final OfferSaveRepository saveRepository;
     private final BusinessRepository businessRepository;
+    private final MenuItemRepository menuItemRepository;
     private final AuditLogService auditLogService;
     private final OfferNotifier offerNotifier;
     private final SecureRandom random = new SecureRandom();
@@ -52,12 +55,14 @@ public class OfferService {
                          OfferClaimRepository claimRepository,
                          OfferSaveRepository saveRepository,
                          BusinessRepository businessRepository,
+                         MenuItemRepository menuItemRepository,
                          AuditLogService auditLogService,
                          OfferNotifier offerNotifier) {
         this.offerRepository = offerRepository;
         this.claimRepository = claimRepository;
         this.saveRepository = saveRepository;
         this.businessRepository = businessRepository;
+        this.menuItemRepository = menuItemRepository;
         this.auditLogService = auditLogService;
         this.offerNotifier = offerNotifier;
     }
@@ -70,6 +75,7 @@ public class OfferService {
     public OfferResponse createOffer(UUID userId, CreateOfferRequest request) {
         Business business = requireOwnedVerifiedBusiness(userId, request.businessId());
         validateOfferFields(request.offerType(), request.discountValue(), request.validFrom(), request.validUntil());
+        validateMenuItem(business.getId(), request.menuItemId());
 
         Offer offer = offerRepository.save(Offer.builder()
                 .businessId(business.getId())
@@ -81,6 +87,7 @@ public class OfferService {
                 .description(blankToNull(request.description()))
                 .termsAndConditions(blankToNull(request.termsAndConditions()))
                 .imageUrl(blankToNull(request.imageUrl()))
+                .menuItemId(request.menuItemId())
                 .validFrom(request.validFrom())
                 .validUntil(request.validUntil())
                 .availability(request.availability())
@@ -100,6 +107,7 @@ public class OfferService {
             throw new BadRequestException("A cancelled offer can't be edited");
         }
         validateOfferFields(request.offerType(), request.discountValue(), request.validFrom(), request.validUntil());
+        validateMenuItem(offer.getBusinessId(), request.menuItemId());
 
         offer.setTitle(request.title().trim());
         offer.setOfferType(request.offerType());
@@ -109,6 +117,7 @@ public class OfferService {
         offer.setDescription(blankToNull(request.description()));
         offer.setTermsAndConditions(blankToNull(request.termsAndConditions()));
         offer.setImageUrl(blankToNull(request.imageUrl()));
+        offer.setMenuItemId(request.menuItemId());
         offer.setValidFrom(request.validFrom());
         offer.setValidUntil(request.validUntil());
         offer.setAvailability(request.availability());
@@ -154,6 +163,17 @@ public class OfferService {
         }
         if (type == OfferType.PERCENTAGE_DISCOUNT && discountValue.compareTo(BigDecimal.valueOf(100)) > 0) {
             throw new BadRequestException("A percentage discount can't exceed 100%");
+        }
+    }
+
+    private void validateMenuItem(UUID businessId, UUID menuItemId) {
+        if (menuItemId == null) {
+            return;
+        }
+        MenuItem item = menuItemRepository.findById(menuItemId)
+                .orElseThrow(() -> new BadRequestException("Menu item not found"));
+        if (!item.getBusinessId().equals(businessId)) {
+            throw new BadRequestException("Menu item must belong to the same business");
         }
     }
 
@@ -472,6 +492,8 @@ public class OfferService {
     }
 
     private OfferResponse toResponse(Offer offer, Business business, boolean saved) {
+        String menuItemName = offer.getMenuItemId() == null ? null
+                : menuItemRepository.findById(offer.getMenuItemId()).map(MenuItem::getName).orElse(null);
         return new OfferResponse(
                 offer.getId(),
                 offer.getBusinessId(),
@@ -491,6 +513,8 @@ public class OfferService {
                 offer.getDescription(),
                 offer.getTermsAndConditions(),
                 offer.getImageUrl(),
+                offer.getMenuItemId(),
+                menuItemName,
                 offer.getValidFrom(),
                 offer.getValidUntil(),
                 offer.getAvailability(),

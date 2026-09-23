@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -72,6 +73,37 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
             ORDER BY p.createdAt DESC
             """)
     Page<CommunityPost> findAllMentioningBusiness(@Param("businessId") UUID businessId, Pageable pageable);
+
+    // -----------------------------------------------------------------
+    // "Questions for you" widget — see CommunityPostService#recommendedQuestions.
+    // -----------------------------------------------------------------
+
+    /** Topic affinity signal: which topics has this user actually posted in. Empty for a brand-new user. */
+    @Query("SELECT DISTINCT p.topic FROM CommunityPost p WHERE p.authorUserId = :userId AND p.deletedAt IS NULL")
+    List<CommunityTopic> findDistinctTopicsByAuthor(@Param("userId") UUID userId);
+
+    /**
+     * Open questions this viewer hasn't asked, already followed/passed, or already answered —
+     * ranked by topic affinity first (topics they themselves post in), then most recent.
+     * `affinityTopics` is never empty at the call site (falls back to every topic, which makes
+     * the CASE a no-op and the ordering pure recency) since JPQL's IN rejects an empty collection.
+     */
+    @Query("""
+            SELECT p FROM CommunityPost p
+            WHERE p.deletedAt IS NULL
+              AND p.postType = :postType
+              AND p.closedAt IS NULL
+              AND p.authorUserId <> :viewerId
+              AND p.id NOT IN (SELECT f.postId FROM CommunityQuestionFollow f WHERE f.userId = :viewerId)
+              AND p.id NOT IN (SELECT ps.postId FROM CommunityQuestionPass ps WHERE ps.userId = :viewerId)
+              AND p.id NOT IN (SELECT c.postId FROM CommunityPostComment c WHERE c.authorUserId = :viewerId AND c.deletedAt IS NULL)
+            ORDER BY CASE WHEN p.topic IN :affinityTopics THEN 0 ELSE 1 END, p.createdAt DESC
+            """)
+    List<CommunityPost> findRecommendedQuestions(
+            @Param("postType") CommunityPostType postType,
+            @Param("viewerId") UUID viewerId,
+            @Param("affinityTopics") Collection<CommunityTopic> affinityTopics,
+            Pageable pageable);
 
     // -----------------------------------------------------------------
     // Atomic counter updates — never read-modify-write against the
