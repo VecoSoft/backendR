@@ -44,6 +44,8 @@ class CommunityPostServiceTest {
     @Mock CommunityBusinessMentionRepository businessMentionRepository;
     @Mock CommunityPostPhotoRepository photoRepository;
     @Mock CommunityFollowRepository followRepository;
+    @Mock CommunityQuestionFollowRepository questionFollowRepository;
+    @Mock CommunityQuestionPassRepository questionPassRepository;
     @Mock CommunityPostPollRepository pollRepository;
     @Mock CommunityPostPollOptionRepository pollOptionRepository;
     @Mock CommunityPostPollVoteRepository pollVoteRepository;
@@ -60,7 +62,8 @@ class CommunityPostServiceTest {
     @BeforeEach
     void setUp() {
         service = new CommunityPostService(postRepository, voteRepository, commentVoteRepository, commentRepository,
-                mentionRepository, businessMentionRepository, photoRepository, followRepository, pollRepository, pollOptionRepository,
+                mentionRepository, businessMentionRepository, photoRepository, followRepository, questionFollowRepository,
+                questionPassRepository, pollRepository, pollOptionRepository,
                 pollVoteRepository, userRepository, businessRepository,
                 areaRepository, reviewRepository, objectStorageClient, communityNotifier, 20, 60);
         userId = UUID.randomUUID();

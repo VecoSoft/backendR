@@ -4,6 +4,7 @@ import com.bdreview.platform.business.Area;
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.business.City;
+import com.bdreview.platform.catalog.MenuItemRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.ResourceNotFoundException;
@@ -38,6 +39,7 @@ class OfferServiceTest {
     @Mock OfferClaimRepository claimRepository;
     @Mock OfferSaveRepository saveRepository;
     @Mock BusinessRepository businessRepository;
+    @Mock MenuItemRepository menuItemRepository;
     @Mock AuditLogService auditLogService;
     @Mock OfferNotifier offerNotifier;
 
@@ -47,7 +49,7 @@ class OfferServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OfferService(offerRepository, claimRepository, saveRepository, businessRepository, auditLogService, offerNotifier);
+        service = new OfferService(offerRepository, claimRepository, saveRepository, businessRepository, menuItemRepository, auditLogService, offerNotifier);
         ownerId = UUID.randomUUID();
         businessId = UUID.randomUUID();
         lenient().when(offerRepository.save(any())).thenAnswer(inv -> {
@@ -79,7 +81,7 @@ class OfferServiceTest {
         return new CreateOfferRequest(businessId, "20% Off Family Combo", OfferType.PERCENTAGE_DISCOUNT,
                 BigDecimal.valueOf(20), BigDecimal.valueOf(1000), BigDecimal.valueOf(800),
                 "Family combo discount", "One redemption per customer", null,
-                Instant.now(), Instant.now().plus(7, ChronoUnit.DAYS), OfferAvailability.BOTH, 100, 1);
+                Instant.now(), Instant.now().plus(7, ChronoUnit.DAYS), OfferAvailability.BOTH, 100, 1, null);
     }
 
     @Test
@@ -106,7 +108,7 @@ class OfferServiceTest {
     void percentageDiscountRequiresADiscountValue() {
         when(businessRepository.findById(businessId)).thenReturn(Optional.of(verifiedBusiness()));
         CreateOfferRequest request = new CreateOfferRequest(businessId, "Some discount", OfferType.PERCENTAGE_DISCOUNT,
-                null, null, null, null, null, null, Instant.now(), Instant.now().plus(1, ChronoUnit.DAYS), OfferAvailability.BOTH, null, null);
+                null, null, null, null, null, null, Instant.now(), Instant.now().plus(1, ChronoUnit.DAYS), OfferAvailability.BOTH, null, null, null);
 
         assertThatThrownBy(() -> service.createOffer(ownerId, request)).isInstanceOf(BadRequestException.class);
     }
@@ -115,7 +117,7 @@ class OfferServiceTest {
     void freeItemOfferDoesNotRequireADiscountValue() {
         when(businessRepository.findById(businessId)).thenReturn(Optional.of(verifiedBusiness()));
         CreateOfferRequest request = new CreateOfferRequest(businessId, "Free Coffee", OfferType.FREE_ITEM,
-                null, null, null, null, null, null, Instant.now(), Instant.now().plus(1, ChronoUnit.DAYS), OfferAvailability.IN_STORE, null, null);
+                null, null, null, null, null, null, Instant.now(), Instant.now().plus(1, ChronoUnit.DAYS), OfferAvailability.IN_STORE, null, null, null);
 
         OfferResponse response = service.createOffer(ownerId, request);
 
@@ -128,7 +130,7 @@ class OfferServiceTest {
         when(businessRepository.findById(businessId)).thenReturn(Optional.of(verifiedBusiness()));
         Instant now = Instant.now();
         CreateOfferRequest request = new CreateOfferRequest(businessId, "Bad dates", OfferType.OTHER,
-                null, null, null, null, null, null, now, now.minus(1, ChronoUnit.HOURS), OfferAvailability.BOTH, null, null);
+                null, null, null, null, null, null, now, now.minus(1, ChronoUnit.HOURS), OfferAvailability.BOTH, null, null, null);
 
         assertThatThrownBy(() -> service.createOffer(ownerId, request)).isInstanceOf(BadRequestException.class);
     }
