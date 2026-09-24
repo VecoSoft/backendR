@@ -5,6 +5,7 @@ import com.bdreview.platform.business.Business;
 import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.PageResponse;
+import com.bdreview.platform.gallery.PreSignedUploadResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,11 @@ public class ReviewController {
         this.userRepository = userRepository;
         this.businessRepository = businessRepository;
         this.reviewPhotoRepository = reviewPhotoRepository;
+    }
+
+    @PostMapping("/upload-url")
+    public ResponseEntity<PreSignedUploadResponse> requestUploadUrl(@RequestParam String filename) {
+        return ResponseEntity.ok(reviewService.requestImageUploadUrl(filename));
     }
 
     @PostMapping

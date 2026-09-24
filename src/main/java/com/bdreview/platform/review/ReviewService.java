@@ -1,5 +1,6 @@
 package com.bdreview.platform.review;
 
+import com.bdreview.platform.accountlink.AccountLinkRepository;
 import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.business.Business;
@@ -9,6 +10,8 @@ import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PageRequestDefaults;
 import com.bdreview.platform.common.ResourceNotFoundException;
 import com.bdreview.platform.fakereview.FakeReviewAnalysisService;
+import com.bdreview.platform.gallery.ObjectStorageClient;
+import com.bdreview.platform.gallery.PreSignedUploadResponse;
 import com.bdreview.platform.summary.SummaryGenerationService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
@@ -19,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -37,26 +42,59 @@ public class ReviewService {
     private final ReviewVoteRepository reviewVoteRepository;
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
+    private final AccountLinkRepository accountLinkRepository;
     private final FakeReviewAnalysisService fakeReviewAnalysisService;
     private final SummaryGenerationService summaryGenerationService;
+    private final ObjectStorageClient objectStorageClient;
     private final ReviewService self;
+
+    private static final Set<String> ALLOWED_IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp", "gif");
 
     public ReviewService(ReviewRepository reviewRepository,
                           ReviewPhotoRepository reviewPhotoRepository,
                           ReviewVoteRepository reviewVoteRepository,
                           BusinessRepository businessRepository,
                           UserRepository userRepository,
+                          AccountLinkRepository accountLinkRepository,
                           FakeReviewAnalysisService fakeReviewAnalysisService,
                           SummaryGenerationService summaryGenerationService,
+                          ObjectStorageClient objectStorageClient,
                           @Lazy ReviewService self) {
         this.reviewRepository = reviewRepository;
         this.reviewPhotoRepository = reviewPhotoRepository;
         this.reviewVoteRepository = reviewVoteRepository;
         this.businessRepository = businessRepository;
         this.userRepository = userRepository;
+        this.accountLinkRepository = accountLinkRepository;
         this.fakeReviewAnalysisService = fakeReviewAnalysisService;
         this.summaryGenerationService = summaryGenerationService;
+        this.objectStorageClient = objectStorageClient;
         this.self = self;
+    }
+
+    // -----------------------------------------------------------------
+    // Image upload — pre-signed direct-to-storage URL, one call per photo
+    // (mirrors gallery.BusinessPhotoService / community.CommunityPostService).
+    // Any authenticated user may call this — a reviewer isn't the business
+    // owner, so BusinessPhotoService's owner-gated endpoint (which the review
+    // form used to reuse as a stopgap) always 403'd here.
+    // -----------------------------------------------------------------
+    public PreSignedUploadResponse requestImageUploadUrl(String filename) {
+        String extension = extensionOf(filename);
+        if (!ALLOWED_IMAGE_EXTENSIONS.contains(extension)) {
+            throw new BadRequestException("Only image files are allowed (jpg, jpeg, png, webp, gif)");
+        }
+        String key = objectStorageClient.buildObjectKey("review", UUID.randomUUID().toString(), filename);
+        return new PreSignedUploadResponse(
+                objectStorageClient.presignPutUrl(key), key, objectStorageClient.cdnUrlFor(key));
+    }
+
+    private String extensionOf(String filename) {
+        if (filename == null) {
+            return "";
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot < 0 ? "" : filename.substring(dot + 1).toLowerCase();
     }
 
     @Transactional
@@ -72,6 +110,9 @@ public class ReviewService {
 
         if (business.getOwnerUserId().equals(userId)) {
             throw new ForbiddenException("You can't review a business you own");
+        }
+        if (reviewerOwnsCompetitor(userId, business)) {
+            throw new ForbiddenException("You can't review a business that competes with a business you own (same category and area)");
         }
 
         if (reviewRepository.findByBusinessIdAndUserIdAndDeletedAtIsNull(request.businessId(), userId).isPresent()) {
@@ -97,6 +138,27 @@ public class ReviewService {
         self.runPostSubmitAnalysis(review.getId(), request.businessId());
 
         return review;
+    }
+
+    /**
+     * True when the reviewer owns a business (directly, or via their linked
+     * consumer<->business account pair — see AccountLink) in the same
+     * category and area as the target — a direct competitor, which makes
+     * any review of the target inherently self-interested. Checked
+     * independently of the "own business" guard above since the two
+     * accounts have different ids.
+     */
+    private boolean reviewerOwnsCompetitor(UUID reviewerUserId, Business target) {
+        List<UUID> ownerAccountIds = new ArrayList<>();
+        ownerAccountIds.add(reviewerUserId);
+        accountLinkRepository.findByConsumerUserId(reviewerUserId)
+                .ifPresent(link -> ownerAccountIds.add(link.getBusinessUserId()));
+
+        return ownerAccountIds.stream()
+                .flatMap(id -> businessRepository.findByOwnerUserIdAndDeletedAtIsNull(id).stream())
+                .anyMatch(owned -> !owned.getId().equals(target.getId())
+                        && owned.getCategory().getId().equals(target.getCategory().getId())
+                        && owned.getArea().getId().equals(target.getArea().getId()));
     }
 
     @Async

@@ -31,7 +31,7 @@ public class CommunityPostController {
 
     @PostMapping("/posts/upload-url")
     public ResponseEntity<PreSignedUploadResponse> requestUploadUrl(@RequestParam String filename) {
-        return ResponseEntity.ok(communityPostService.requestImageUploadUrl(CurrentUser.id(), filename));
+        return ResponseEntity.ok(communityPostService.requestImageUploadUrl(filename));
     }
 
     @PostMapping("/posts")
@@ -56,21 +56,21 @@ public class CommunityPostController {
         return ResponseEntity.ok(communityPostService.getPost(postId, CurrentUser.idOrNull()));
     }
 
-    @GetMapping("/users/{userId}/posts")
+    @GetMapping("/users/{communityProfileId}/posts")
     public ResponseEntity<PageResponse<CommunityPostResponse>> postsByAuthor(
-            @PathVariable UUID userId,
+            @PathVariable UUID communityProfileId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(communityPostService.postsByAuthor(userId, page, size, CurrentUser.idOrNull()));
+        return ResponseEntity.ok(communityPostService.postsByAuthor(communityProfileId, page, size, CurrentUser.idOrNull()));
     }
 
     /** Community profile page's "Comments" tab. */
-    @GetMapping("/users/{userId}/comments")
+    @GetMapping("/users/{communityProfileId}/comments")
     public ResponseEntity<PageResponse<CommunityCommentResponse>> commentsByAuthor(
-            @PathVariable UUID userId,
+            @PathVariable UUID communityProfileId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(communityPostService.commentsByAuthor(userId, page, size, CurrentUser.idOrNull()));
+        return ResponseEntity.ok(communityPostService.commentsByAuthor(communityProfileId, page, size, CurrentUser.idOrNull()));
     }
 
     /** Powers a "Community mentions" tab on a business's own profile page. */
@@ -185,31 +185,31 @@ public class CommunityPostController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/users/{userId}/follow")
-    public ResponseEntity<Void> follow(@PathVariable UUID userId) {
-        communityPostService.follow(CurrentUser.id(), userId);
+    @PostMapping("/users/{communityProfileId}/follow")
+    public ResponseEntity<Void> follow(@PathVariable UUID communityProfileId) {
+        communityPostService.follow(CurrentUser.id(), communityProfileId);
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/users/{userId}/follow")
-    public ResponseEntity<Void> unfollow(@PathVariable UUID userId) {
-        communityPostService.unfollow(CurrentUser.id(), userId);
+    @DeleteMapping("/users/{communityProfileId}/follow")
+    public ResponseEntity<Void> unfollow(@PathVariable UUID communityProfileId) {
+        communityPostService.unfollow(CurrentUser.id(), communityProfileId);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/users/{userId}/following")
+    @GetMapping("/users/{communityProfileId}/following")
     public ResponseEntity<PageResponse<CommunityFollowListItem>> following(
-            @PathVariable UUID userId,
+            @PathVariable UUID communityProfileId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(communityPostService.following(userId, page, size, CurrentUser.idOrNull()));
+        return ResponseEntity.ok(communityPostService.following(communityProfileId, page, size, CurrentUser.idOrNull()));
     }
 
-    @GetMapping("/users/{userId}/followers")
+    @GetMapping("/users/{communityProfileId}/followers")
     public ResponseEntity<PageResponse<CommunityFollowListItem>> followers(
-            @PathVariable UUID userId,
+            @PathVariable UUID communityProfileId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(communityPostService.followers(userId, page, size, CurrentUser.idOrNull()));
+        return ResponseEntity.ok(communityPostService.followers(communityProfileId, page, size, CurrentUser.idOrNull()));
     }
 }

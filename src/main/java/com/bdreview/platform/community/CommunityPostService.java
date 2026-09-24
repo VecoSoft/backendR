@@ -126,12 +126,15 @@ public class CommunityPostService {
     // then sends the resulting CDN URLs as CreateCommunityPostRequest#imageUrls.
     // -----------------------------------------------------------------
 
-    public PreSignedUploadResponse requestImageUploadUrl(UUID userId, String filename) {
+    public PreSignedUploadResponse requestImageUploadUrl(String filename) {
         String extension = extensionOf(filename);
         if (!ALLOWED_IMAGE_EXTENSIONS.contains(extension)) {
             throw new BadRequestException("Only image files are allowed (jpg, jpeg, png, webp, gif)");
         }
-        String key = objectStorageClient.buildObjectKey("community-post", userId.toString(), filename);
+        // A fresh random folder segment, not the uploader's user id — the resulting URL is public
+        // (served back as the post's photo), and V46's migration is exactly about not letting a
+        // real user id leak through any Community-facing response, including this one.
+        String key = objectStorageClient.buildObjectKey("community-post", UUID.randomUUID().toString(), filename);
         return new PreSignedUploadResponse(
                 objectStorageClient.presignPutUrl(key), key, objectStorageClient.cdnUrlFor(key));
     }
@@ -335,7 +338,8 @@ public class CommunityPostService {
         return buildPageResponse(posts, viewerUserId);
     }
 
-    public PageResponse<CommunityPostResponse> postsByAuthor(UUID authorUserId, int page, int size, UUID viewerUserId) {
+    public PageResponse<CommunityPostResponse> postsByAuthor(UUID authorCommunityProfileId, int page, int size, UUID viewerUserId) {
+        UUID authorUserId = resolveCommunityProfileId(authorCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
         Page<CommunityPost> posts = postRepository.findAllByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(authorUserId, pageable);
         return buildPageResponse(posts, viewerUserId);
@@ -586,7 +590,8 @@ public class CommunityPostService {
     }
 
     /** Community profile page's "Comments" tab. */
-    public PageResponse<CommunityCommentResponse> commentsByAuthor(UUID authorUserId, int page, int size, UUID viewerUserId) {
+    public PageResponse<CommunityCommentResponse> commentsByAuthor(UUID authorCommunityProfileId, int page, int size, UUID viewerUserId) {
+        UUID authorUserId = resolveCommunityProfileId(authorCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
         Page<CommunityPostComment> comments = commentRepository.findByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(authorUserId, pageable);
 
@@ -796,11 +801,11 @@ public class CommunityPostService {
     // -----------------------------------------------------------------
 
     @Transactional
-    public void follow(UUID followerUserId, UUID followedUserId) {
+    public void follow(UUID followerUserId, UUID followedCommunityProfileId) {
+        UUID followedUserId = resolveCommunityProfileId(followedCommunityProfileId);
         if (followerUserId.equals(followedUserId)) {
             throw new BadRequestException("You can't follow yourself");
         }
-        userRepository.findById(followedUserId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         if (followRepository.existsByFollowerUserIdAndFollowedUserId(followerUserId, followedUserId)) {
             return;
         }
@@ -809,7 +814,8 @@ public class CommunityPostService {
     }
 
     @Transactional
-    public void unfollow(UUID followerUserId, UUID followedUserId) {
+    public void unfollow(UUID followerUserId, UUID followedCommunityProfileId) {
+        UUID followedUserId = resolveCommunityProfileId(followedCommunityProfileId);
         followRepository.deleteByFollowerUserIdAndFollowedUserId(followerUserId, followedUserId);
     }
 
@@ -827,22 +833,31 @@ public class CommunityPostService {
                 && followRepository.existsByFollowerUserIdAndFollowedUserId(viewerUserId, user.getId());
         long followerCount = followRepository.countByFollowedUserId(user.getId());
         long followingCount = followRepository.countByFollowerUserId(user.getId());
-        return new CommunityProfileResponse(user.getId(), user.getCommunityUsername(), user.getCreatedAt(),
+        return new CommunityProfileResponse(user.getCommunityProfileId(), user.getCommunityUsername(), user.getCreatedAt(),
                 user.isOtpVerified(), reviewCount, postCount, commentCount, isFollowing, followerCount, followingCount);
     }
 
     /** Sidebar "Following" — people the given user follows (not their posts; see the profile page's own Follow button for the post-feed equivalent, feed tab=FOLLOWING). */
-    public PageResponse<CommunityFollowListItem> following(UUID userId, int page, int size, UUID viewerUserId) {
+    public PageResponse<CommunityFollowListItem> following(UUID subjectCommunityProfileId, int page, int size, UUID viewerUserId) {
+        UUID subjectUserId = resolveCommunityProfileId(subjectCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
-        Page<CommunityFollow> follows = followRepository.findByFollowerUserId(userId, pageable);
+        Page<CommunityFollow> follows = followRepository.findByFollowerUserId(subjectUserId, pageable);
         return toFollowListResponse(follows.map(CommunityFollow::getFollowedUserId), viewerUserId);
     }
 
     /** Sidebar "Followers" — people who follow the given user. */
-    public PageResponse<CommunityFollowListItem> followers(UUID userId, int page, int size, UUID viewerUserId) {
+    public PageResponse<CommunityFollowListItem> followers(UUID subjectCommunityProfileId, int page, int size, UUID viewerUserId) {
+        UUID subjectUserId = resolveCommunityProfileId(subjectCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
-        Page<CommunityFollow> follows = followRepository.findByFollowedUserId(userId, pageable);
+        Page<CommunityFollow> follows = followRepository.findByFollowedUserId(subjectUserId, pageable);
         return toFollowListResponse(follows.map(CommunityFollow::getFollowerUserId), viewerUserId);
+    }
+
+    /** Translates a Community-facing pseudonymous id back to the real user id — see V46's migration comment. */
+    private UUID resolveCommunityProfileId(UUID communityProfileId) {
+        return userRepository.findByCommunityProfileId(communityProfileId)
+                .map(User::getId)
+                .orElseThrow(() -> new ResourceNotFoundException("Community profile not found"));
     }
 
     private PageResponse<CommunityFollowListItem> toFollowListResponse(Page<UUID> userIds, UUID viewerUserId) {
@@ -1036,14 +1051,16 @@ public class CommunityPostService {
                 comment.getCreatedAt(), comment.getUpdatedAt());
     }
 
-    /** Never includes real name/phone/profile photo — see CommunityAuthorSummary. */
+    /** Never includes real name/phone/profile photo, or the real user id — see CommunityAuthorSummary. */
     private CommunityAuthorSummary toAuthorSummary(User user, UUID fallbackId, Map<UUID, Long> reviewCounts) {
         if (user == null) {
+            // No row to read a communityProfileId off of (deleted/missing account) — fallbackId
+            // here is the post/comment's own stored author_user_id, a dead-end lookup either way.
             return new CommunityAuthorSummary(fallbackId, null, 0, null, false);
         }
         long reviewCount = reviewCounts.getOrDefault(user.getId(), 0L);
         return new CommunityAuthorSummary(
-                user.getId(), user.getCommunityUsername(),
+                user.getCommunityProfileId(), user.getCommunityUsername(),
                 reviewCount, user.getCreatedAt(), user.isOtpVerified());
     }
 

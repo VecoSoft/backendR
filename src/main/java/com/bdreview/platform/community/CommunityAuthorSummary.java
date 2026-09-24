@@ -9,6 +9,11 @@ import java.util.UUID;
  * CommunityPostService#toAuthorSummary and V33's account/community identity
  * split). reviewCount/memberSince/verified are anonymous trust signals, not
  * private data — they don't identify the person behind the username.
+ *
+ * <p>{@code id} is {@code User.communityProfileId}, NOT {@code User.id} (see
+ * V46's migration comment) — the Review API returns that real id alongside
+ * the reviewer's real name, so reusing it here would let the two APIs be
+ * joined to deanonymize a Community user.
  */
 public record CommunityAuthorSummary(
         UUID id, String communityUsername,

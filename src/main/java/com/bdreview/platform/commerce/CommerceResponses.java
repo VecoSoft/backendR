@@ -114,6 +114,10 @@ public final class CommerceResponses {
             UUID businessId,
             String businessName,
             String businessSlug,
+            /** The business's own contact number — shown on the order so the customer can call about pickup/delivery. */
+            String businessPhone,
+            /** "{area}, {city}" — the business has no separate street-address field; this is its location, same as the public page. */
+            String businessAddress,
             UUID customerUserId,
             OrderStatus status,
             FulfillmentType fulfillmentType,
@@ -131,6 +135,8 @@ public final class CommerceResponses {
             BigDecimal deliveryDistanceKm,
             String customerNote,
             String rejectionReason,
+            /** Set once the owner accepts the order — null before that (see BusinessOrder#estimatedReadyAt). */
+            Instant estimatedReadyAt,
             Instant createdAt,
             List<OrderItemResponse> items,
             List<OrderStatusEventResponse> timeline

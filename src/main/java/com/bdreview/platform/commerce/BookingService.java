@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Phase C — appointment booking, backed by a real availability engine
@@ -88,6 +90,19 @@ public class BookingService {
 
         if (req.preferredDate().isBefore(LocalDate.now())) {
             throw new BadRequestException("Preferred date can't be in the past.");
+        }
+
+        // The no_staff_double_booking DB constraint only protects one staff member's
+        // calendar — nothing stops the same customer from booking themselves into two
+        // overlapping appointments (possibly with different staff, or at different
+        // businesses entirely). Checked against this service's own base duration since
+        // the actual staff candidate isn't picked yet.
+        int precheckOccupied = (svc.getDurationMinutes() != null ? svc.getDurationMinutes() : 60)
+                + (svc.getBufferMinutes() != null ? svc.getBufferMinutes() : 0);
+        LocalDateTime precheckStart = LocalDateTime.of(req.preferredDate(), req.preferredTime());
+        LocalDateTime precheckEnd = precheckStart.plusMinutes(precheckOccupied);
+        if (!bookingRepo.findOverlappingForCustomer(customerUserId, precheckStart, precheckEnd).isEmpty()) {
+            throw new ConflictException("You already have a booking around this time.");
         }
 
         List<UUID> candidates;
@@ -360,6 +375,28 @@ public class BookingService {
             }
         }
         return new QueueStatusResponse(true, ahead.size(), estimatedWaitMinutes, currentlyServing);
+    }
+
+    /**
+     * Sweeps CONFIRMED bookings whose slot ended over an hour ago (a grace window so an
+     * owner running slightly behind can still mark one COMPLETED by hand) and auto-closes
+     * them — COMPLETED if the owner had started serving it (see {@link #start}), NO_SHOW
+     * otherwise. Without this, a booking the owner forgot to close sits "Confirmed"
+     * forever, which is misleading for both sides after the appointment time has passed.
+     */
+    @Transactional
+    @Scheduled(fixedRate = 15, timeUnit = TimeUnit.MINUTES)
+    public void autoExpirePastBookings() {
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(1);
+        for (Booking booking : bookingRepo.findByStatusAndSlotEndBefore(BookingStatus.CONFIRMED, cutoff)) {
+            BookingStatus target = booking.getStartedAt() != null ? BookingStatus.COMPLETED : BookingStatus.NO_SHOW;
+            String note = target == BookingStatus.COMPLETED
+                    ? "Auto-completed — booking time passed"
+                    : "Auto-marked no-show — booking time passed without being started";
+            applyTransition(booking, target, null, note);
+            notifier.bookingStatusChanged(booking.getCustomerUserId(), booking.getId(), booking.getBookingNumber(),
+                    target, NotificationType.BOOKING_STATUS_CHANGED);
+        }
     }
 
     // ================================================================

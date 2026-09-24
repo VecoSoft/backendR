@@ -32,8 +32,21 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             "and b.slotStart < :end and b.slotEnd > :start")
     List<Booking> findOverlapping(@Param("staffId") UUID staffId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
+    /**
+     * A customer's own PENDING/CONFIRMED bookings (across every business/staff — the
+     * {@code no_staff_double_booking} DB constraint only protects one staff member's
+     * calendar, not the customer's) whose occupied window overlaps {@code [start, end)}.
+     */
+    @Query("select b from Booking b where b.customerUserId = :customerUserId and b.status in ('PENDING','CONFIRMED') " +
+            "and b.slotStart < :end and b.slotEnd > :start")
+    List<Booking> findOverlappingForCustomer(@Param("customerUserId") UUID customerUserId,
+                                              @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
     /** One staff member's confirmed schedule for a day, in serving order — the pool the live queue/ETA is computed from. */
     List<Booking> findByStaffIdAndPreferredDateAndStatusOrderBySlotStartAsc(UUID staffId, LocalDate preferredDate, BookingStatus status);
+
+    /** CONFIRMED bookings whose slot has already ended — the pool the auto-expire job sweeps. */
+    List<Booking> findByStatusAndSlotEndBefore(BookingStatus status, LocalDateTime cutoff);
 
     /** Next booking number from the DB sequence — used to build "B-1045". */
     @Query(value = "SELECT nextval('booking_number_seq')", nativeQuery = true)

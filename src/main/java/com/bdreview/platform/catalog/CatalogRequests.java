@@ -93,7 +93,9 @@ public final class CatalogRequests {
             /** Commerce (Phase A): optional numeric price + availability / ordering toggles. */
             @DecimalMin("0.0") @Digits(integer = 8, fraction = 2) BigDecimal price,
             Boolean available,
-            Boolean orderingEnabled
+            Boolean orderingEnabled,
+            /** Optional "was" price shown struck through; only kept when greater than price. */
+            @DecimalMin("0.0") @Digits(integer = 8, fraction = 2) BigDecimal compareAtPrice
     ) {
     }
 

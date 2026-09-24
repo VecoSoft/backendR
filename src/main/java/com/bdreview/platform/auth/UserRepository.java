@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    /** Resolves a Community-facing pseudonymous id back to the real user — see V46's migration comment. */
+    Optional<User> findByCommunityProfileId(UUID communityProfileId);
+
     /**
      * Phone number is no longer globally unique — one phone can back at most
      * one CONSUMER row and one BUSINESS_OWNER row (see V17 migration), so

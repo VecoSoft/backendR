@@ -8,7 +8,8 @@ import java.util.UUID;
  * CommunityAuthorSummary: no name/phone/email, ever.
  */
 public record CommunityProfileResponse(
-        UUID userId,
+        /** Community-facing pseudonymous id — never the real app_user.id. See V46's migration comment. */
+        UUID communityProfileId,
         String communityUsername,
         Instant memberSince,
         boolean verified,

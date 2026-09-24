@@ -1,5 +1,6 @@
 package com.bdreview.platform.catalog;
 
+import com.bdreview.platform.offer.OfferType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -47,6 +48,14 @@ public class MenuItem {
     @Column(precision = 10, scale = 2)
     private BigDecimal price;
 
+    /**
+     * Optional "was" price shown struck through next to {@link #price} so a standalone discount
+     * (one not backed by a full Offer) is still disclosed on the menu. Only meaningful when greater
+     * than {@code price}; ignored/cleared otherwise by {@code CatalogService}.
+     */
+    @Column(name = "compare_at_price", precision = 10, scale = 2)
+    private BigDecimal compareAtPrice;
+
     @Builder.Default
     @Column(nullable = false)
     private boolean available = true;
@@ -77,6 +86,11 @@ public class MenuItem {
     @Transient
     private UUID activeOfferId;
 
+    /** Set whenever activeOfferId is, even for non-numeric types (e.g. BUY_ONE_GET_ONE) where activeOfferPrice stays null. */
+    @Transient
+    private OfferType activeOfferType;
+
+    /** Only set for numeric offer types (percentage/fixed discount) — null for BUY_ONE_GET_ONE etc., which change quantity billed, not unit price. */
     @Transient
     private BigDecimal activeOfferPrice;
 

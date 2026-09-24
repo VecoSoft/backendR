@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -190,9 +191,12 @@ public class CatalogService {
                 .collect(java.util.stream.Collectors.toMap(Offer::getMenuItemId, Function.identity(), (a, b) -> a));
         for (MenuItem item : items) {
             Offer offer = activeOfferByMenuItemId.get(item.getId());
-            if (offer != null && offer.getOfferPrice() != null) {
+            if (offer != null) {
                 item.setActiveOfferId(offer.getId());
-                item.setActiveOfferPrice(offer.getOfferPrice());
+                item.setActiveOfferType(offer.getOfferType());
+                if (offer.getOfferPrice() != null) {
+                    item.setActiveOfferPrice(offer.getOfferPrice());
+                }
             }
         }
         return items;
@@ -211,6 +215,7 @@ public class CatalogService {
                 .description(blankToNull(req.description()))
                 .priceText(blankToNull(req.priceText()))
                 .price(req.price())
+                .compareAtPrice(resolveCompareAtPrice(req.price(), req.compareAtPrice()))
                 .available(req.available() == null || req.available())
                 // Derived, not a separate toggle: a priced item is orderable.
                 .orderingEnabled(req.price() != null)
@@ -229,12 +234,21 @@ public class CatalogService {
         row.setDescription(blankToNull(req.description()));
         row.setPriceText(blankToNull(req.priceText()));
         row.setPrice(req.price());
+        row.setCompareAtPrice(resolveCompareAtPrice(req.price(), req.compareAtPrice()));
         row.setAvailable(req.available() == null || req.available());
         row.setOrderingEnabled(req.price() != null);
         row.setPhotoUrl(blankToNull(req.photoUrl()));
         row.setMenuSection(blankToNull(req.menuSection()));
         row.setPopular(req.popular());
         return menuRepository.save(row);
+    }
+
+    /** A "was" price only means something when it's actually higher than the current price. */
+    private BigDecimal resolveCompareAtPrice(BigDecimal price, BigDecimal compareAtPrice) {
+        if (compareAtPrice == null || price == null || compareAtPrice.compareTo(price) <= 0) {
+            return null;
+        }
+        return compareAtPrice;
     }
 
     @Transactional

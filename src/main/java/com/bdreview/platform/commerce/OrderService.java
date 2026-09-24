@@ -16,15 +16,20 @@ import com.bdreview.platform.common.ResourceNotFoundException;
 import com.bdreview.platform.notification.NotificationType;
 import com.bdreview.platform.offer.Offer;
 import com.bdreview.platform.offer.OfferRepository;
+import com.bdreview.platform.offer.OfferType;
 import org.locationtech.jts.geom.Point;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The heart of Phase A. Every amount is recomputed from the database here —
@@ -33,6 +38,9 @@ import java.util.*;
  */
 @Service
 public class OrderService {
+
+    /** Fallback when the business hasn't set a default prep time (CommerceSettings#defaultPrepMinutes is null). */
+    private static final int DEFAULT_PREP_MINUTES = 20;
 
     private final BusinessOrderRepository orderRepo;
     private final BusinessOrderItemRepository itemRepo;
@@ -103,7 +111,12 @@ public class OrderService {
             BigDecimal unit = money(activeOffer != null && activeOffer.getOfferPrice() != null
                     ? activeOffer.getOfferPrice() : mi.getPrice());
             int qty = e.getValue();
-            BigDecimal lineTotal = unit.multiply(BigDecimal.valueOf(qty));
+            // BUY_ONE_GET_ONE has no discounted unit price (offerPrice is null for it) — the
+            // discount is in how many units get billed: every pair costs one. Odd quantities
+            // round the billed count up (3 bought -> 2 billed), never in the customer's favor.
+            boolean isBogo = activeOffer != null && activeOffer.getOfferType() == OfferType.BUY_ONE_GET_ONE;
+            int billedQty = isBogo ? (qty + 1) / 2 : qty;
+            BigDecimal lineTotal = unit.multiply(BigDecimal.valueOf(billedQty));
             subtotal = subtotal.add(lineTotal);
             items.add(BusinessOrderItem.builder()
                     .sourceType(OrderItemSource.MENU_ITEM)
@@ -260,6 +273,10 @@ public class OrderService {
         if (target == OrderStatus.COMPLETED) {
             order.setPaymentStatus(PaymentStatus.PAID);
         }
+        if (target == OrderStatus.ACCEPTED && order.getEstimatedReadyAt() == null) {
+            Integer prepMinutes = settingsService.getOrDefault(order.getBusinessId()).getDefaultPrepMinutes();
+            order.setEstimatedReadyAt(Instant.now().plusSeconds(60L * (prepMinutes != null ? prepMinutes : DEFAULT_PREP_MINUTES)));
+        }
         applyTransition(order, target, ownerUserId, note);
 
         NotificationType type = switch (target) {
@@ -274,6 +291,23 @@ public class OrderService {
         }
 
         return toResponse(order, business, itemRepo.findByOrderId(orderId), timeline(orderId));
+    }
+
+    /**
+     * Sweeps orders the owner never actioned — still PENDING ("New") a full day after
+     * placement — and auto-cancels them with the customer notified, instead of leaving
+     * a stale order sitting forever with no resolution on either side.
+     */
+    @Transactional
+    @Scheduled(fixedRate = 30, timeUnit = TimeUnit.MINUTES)
+    public void autoExpireStalePendingOrders() {
+        Instant cutoff = Instant.now().minus(24, ChronoUnit.HOURS);
+        for (BusinessOrder order : orderRepo.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff)) {
+            order.setRejectionReason("Auto-cancelled — the business didn't respond in time");
+            applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within 24 hours");
+            notifier.statusChanged(order.getCustomerUserId(), order.getId(), order.getOrderNumber(),
+                    OrderStatus.CANCELLED, NotificationType.ORDER_STATUS_CHANGED);
+        }
     }
 
     // ================================================================
@@ -322,12 +356,13 @@ public class OrderService {
         Double lng = o.getDeliveryLocation() != null ? o.getDeliveryLocation().getX() : null;
         return new OrderResponse(
                 o.getId(), o.getOrderNumber(), o.getBusinessId(), business.getName(), business.getSlug(),
+                business.getContactNumber(), business.getArea().getName() + ", " + business.getCity().getName(),
                 o.getCustomerUserId(), o.getStatus(), o.getFulfillmentType(),
                 o.getSubtotal(), o.getDeliveryFee(), o.getDiscountAmount(), o.getTotalAmount(),
                 o.getPaymentMethod(), o.getPaymentStatus(),
                 o.getCustomerNameSnapshot(), o.getCustomerPhoneSnapshot(),
                 o.getDeliveryAddress(), lat, lng, o.getDeliveryDistanceKm(),
-                o.getCustomerNote(), o.getRejectionReason(), o.getCreatedAt(),
+                o.getCustomerNote(), o.getRejectionReason(), o.getEstimatedReadyAt(), o.getCreatedAt(),
                 items.stream().map(OrderItemResponse::from).toList(),
                 timeline);
     }

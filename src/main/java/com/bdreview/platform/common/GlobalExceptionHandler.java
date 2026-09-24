@@ -6,10 +6,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.stream.Collectors;
@@ -62,6 +65,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
         return build(HttpStatus.BAD_REQUEST, "Invalid value for '" + ex.getName() + "'", req);
+    }
+
+    /**
+     * A real endpoint, wrong HTTP verb (e.g. PUT on a route that only maps PATCH) — without this,
+     * the broad Exception.class handler below catches it before Spring's own default resolver
+     * ever gets a chance, downgrading a correct 405 into a misleading 500 "Unexpected error".
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest req) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), req);
+    }
+
+    /** No route matches at all (typo'd/nonexistent endpoint) — same "don't let Exception.class turn this into a 500" reasoning as above. */
+    @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})
+    public ResponseEntity<ApiError> handleNoHandlerFound(Exception ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, "No such endpoint", req);
     }
 
     @ExceptionHandler(Exception.class)

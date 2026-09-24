@@ -89,6 +89,10 @@ public class BusinessOrder {
     @Column(name = "rejection_reason", length = 200)
     private String rejectionReason;
 
+    /** Set once the owner accepts the order — createdAt/acceptedAt + the business's default prep time. Null until then. */
+    @Column(name = "estimated_ready_at")
+    private Instant estimatedReadyAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

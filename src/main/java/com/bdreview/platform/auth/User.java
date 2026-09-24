@@ -46,6 +46,17 @@ public class User {
     @Column(name = "community_username", length = 20)
     private String communityUsername;
 
+    /**
+     * Public identity for Community responses (author.id, profile userId, etc.) —
+     * deliberately NOT {@link #id}, which the (non-anonymous) Review API also
+     * returns alongside the reviewer's real name; reusing that same id in
+     * Community would let anyone join the two APIs and deanonymize a user
+     * (see V46's migration comment). Random, set once at row creation,
+     * present even before communityUsername is ever set.
+     */
+    @Column(name = "community_profile_id", nullable = false)
+    private UUID communityProfileId;
+
     @Builder.Default
     @Column(name = "preferred_language", nullable = false, length = 10)
     private String preferredLanguage = "en";
@@ -56,5 +67,12 @@ public class User {
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();
+        // The column default (uuid_generate_v4(), see V46) only covers rows written outside
+        // Hibernate (the migration's backfill) — Hibernate always includes every mapped column
+        // in its own INSERT, so a new row needs this set here or it would insert NULL and violate
+        // the NOT NULL constraint.
+        if (this.communityProfileId == null) {
+            this.communityProfileId = UUID.randomUUID();
+        }
     }
 }

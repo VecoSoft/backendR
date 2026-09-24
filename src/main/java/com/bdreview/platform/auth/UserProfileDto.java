@@ -12,5 +12,7 @@ public record UserProfileDto(
         String preferredLanguage,
         boolean hasLinkedAccount,
         /** Public "Join Community" pseudonymous handle — null until the setup flow is completed. */
-        String communityUsername) {
+        String communityUsername,
+        /** This account's own Community-facing pseudonymous id — compare against a post/comment's author.id for "is this mine", never against {@code id} (see V46's migration comment). */
+        UUID communityProfileId) {
 }

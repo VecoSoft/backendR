@@ -58,6 +58,6 @@ public class UserService {
     private UserProfileDto toDto(User user) {
         return new UserProfileDto(user.getId(), user.getPhoneNumber(), user.getRole(),
                 user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage(),
-                accountLinkService.isLinked(user.getId()), user.getCommunityUsername());
+                accountLinkService.isLinked(user.getId()), user.getCommunityUsername(), user.getCommunityProfileId());
     }
 }
