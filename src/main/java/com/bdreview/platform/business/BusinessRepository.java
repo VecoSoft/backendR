@@ -46,6 +46,23 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
             """, nativeQuery = true)
     List<Business> searchForClaim(@Param("query") String query);
 
+    /**
+     * Hard guard at listing-creation time (searchForClaim above is only a pre-step suggestion the
+     * owner can click past) — an exact phone match is a near-certain duplicate regardless of name;
+     * a close name match in the same area is treated the same way rather than a global name match,
+     * since a name like "KFC" is legitimately repeated across many unrelated real businesses/areas.
+     */
+    @Query(value = """
+            SELECT b.* FROM business b
+            WHERE b.deleted_at IS NULL
+              AND (
+                b.contact_number = :phone
+                OR (word_similarity(b.name, :name) > 0.5 AND b.area_id = :areaId)
+              )
+            LIMIT 5
+            """, nativeQuery = true)
+    List<Business> findLikelyDuplicates(@Param("name") String name, @Param("areaId") UUID areaId, @Param("phone") String phone);
+
     @Query(value = """
             SELECT levenshtein(b.name, :name) FROM business b WHERE b.id = :businessId
             """, nativeQuery = true)

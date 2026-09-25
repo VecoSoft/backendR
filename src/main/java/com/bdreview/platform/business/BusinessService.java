@@ -4,6 +4,7 @@ import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.auth.UserRole;
 import com.bdreview.platform.common.BadRequestException;
+import com.bdreview.platform.common.ConflictException;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PhoneNumberUtils;
@@ -106,6 +107,14 @@ public class BusinessService {
 
         validateEstablishedYear(request.establishedYear());
 
+        String normalizedPhone = PhoneNumberUtils.normalize(request.contactNumber());
+        List<Business> duplicates = businessRepository.findLikelyDuplicates(request.name(), area.getId(), normalizedPhone);
+        if (!duplicates.isEmpty()) {
+            Business match = duplicates.get(0);
+            throw new ConflictException("\"" + match.getName() + "\" already looks like a listing for this business in "
+                    + area.getName() + ". If this is your business, claim or dispute that listing instead of creating a new one.");
+        }
+
         Business business = Business.builder()
                 .ownerUserId(ownerUserId)
                 .name(request.name())
@@ -113,7 +122,7 @@ public class BusinessService {
                 .category(category)
                 .city(city)
                 .area(area)
-                .contactNumber(PhoneNumberUtils.normalize(request.contactNumber()))
+                .contactNumber(normalizedPhone)
                 .operatingHours(request.operatingHours())
                 .description(request.description())
                 .establishedYear(request.establishedYear())
