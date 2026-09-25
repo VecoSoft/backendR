@@ -47,6 +47,16 @@ public class User {
     private String communityUsername;
 
     /**
+     * Optional avatar for the pseudonymous Community identity — deliberately separate from
+     * {@link #profilePhotoUrl} (the real account photo, which CommunityAuthorSummary/
+     * CommunityProfileResponse never expose). Uploaded through a storage key that embeds a
+     * random id instead of this user's real id (see CommunityPostService's image-upload
+     * pattern), so the URL itself can't be used to link a Community identity back to this row.
+     */
+    @Column(name = "community_avatar_url", columnDefinition = "text")
+    private String communityAvatarUrl;
+
+    /**
      * Public identity for Community responses (author.id, profile userId, etc.) —
      * deliberately NOT {@link #id}, which the (non-anonymous) Review API also
      * returns alongside the reviewer's real name; reusing that same id in

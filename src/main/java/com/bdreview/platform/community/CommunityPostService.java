@@ -834,7 +834,8 @@ public class CommunityPostService {
         long followerCount = followRepository.countByFollowedUserId(user.getId());
         long followingCount = followRepository.countByFollowerUserId(user.getId());
         return new CommunityProfileResponse(user.getCommunityProfileId(), user.getCommunityUsername(), user.getCreatedAt(),
-                user.isOtpVerified(), reviewCount, postCount, commentCount, isFollowing, followerCount, followingCount);
+                user.isOtpVerified(), reviewCount, postCount, commentCount, isFollowing, followerCount, followingCount,
+                user.getCommunityAvatarUrl());
     }
 
     /** Sidebar "Following" — people the given user follows (not their posts; see the profile page's own Follow button for the post-feed equivalent, feed tab=FOLLOWING). */
@@ -1051,17 +1052,17 @@ public class CommunityPostService {
                 comment.getCreatedAt(), comment.getUpdatedAt());
     }
 
-    /** Never includes real name/phone/profile photo, or the real user id — see CommunityAuthorSummary. */
+    /** Never includes real name/phone/real profile photo, or the real user id — see CommunityAuthorSummary. */
     private CommunityAuthorSummary toAuthorSummary(User user, UUID fallbackId, Map<UUID, Long> reviewCounts) {
         if (user == null) {
             // No row to read a communityProfileId off of (deleted/missing account) — fallbackId
             // here is the post/comment's own stored author_user_id, a dead-end lookup either way.
-            return new CommunityAuthorSummary(fallbackId, null, 0, null, false);
+            return new CommunityAuthorSummary(fallbackId, null, 0, null, false, null);
         }
         long reviewCount = reviewCounts.getOrDefault(user.getId(), 0L);
         return new CommunityAuthorSummary(
                 user.getCommunityProfileId(), user.getCommunityUsername(),
-                reviewCount, user.getCreatedAt(), user.isOtpVerified());
+                reviewCount, user.getCreatedAt(), user.isOtpVerified(), user.getCommunityAvatarUrl());
     }
 
     private CommunityMentionedBusinessSummary toBusinessSummary(Business business) {

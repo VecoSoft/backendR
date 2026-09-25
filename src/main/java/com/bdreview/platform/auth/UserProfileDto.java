@@ -14,5 +14,7 @@ public record UserProfileDto(
         /** Public "Join Community" pseudonymous handle — null until the setup flow is completed. */
         String communityUsername,
         /** This account's own Community-facing pseudonymous id — compare against a post/comment's author.id for "is this mine", never against {@code id} (see V46's migration comment). */
-        UUID communityProfileId) {
+        UUID communityProfileId,
+        /** Separate from profilePhotoUrl — the avatar shown publicly next to u/{communityUsername}, never the real photo. */
+        String communityAvatarUrl) {
 }

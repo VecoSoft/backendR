@@ -31,4 +31,15 @@ public class UserController {
     public ResponseEntity<PreSignedUploadResponse> requestPhotoUploadUrl(@RequestParam String filename) {
         return ResponseEntity.ok(userService.requestPhotoUploadUrl(CurrentUser.id(), filename));
     }
+
+    /** Separate upload path from /photo/upload-url above — see UserService#requestCommunityAvatarUploadUrl. */
+    @PostMapping("/community-avatar/upload-url")
+    public ResponseEntity<PreSignedUploadResponse> requestCommunityAvatarUploadUrl(@RequestParam String filename) {
+        return ResponseEntity.ok(userService.requestCommunityAvatarUploadUrl(filename));
+    }
+
+    @PutMapping("/community-avatar")
+    public ResponseEntity<UserProfileDto> updateCommunityAvatar(@RequestBody UpdateCommunityAvatarRequest request) {
+        return ResponseEntity.ok(userService.updateCommunityAvatar(CurrentUser.id(), request.communityAvatarUrl()));
+    }
 }

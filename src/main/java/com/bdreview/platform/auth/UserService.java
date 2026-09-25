@@ -50,6 +50,26 @@ public class UserService {
                 objectStorageClient.presignPutUrl(key), key, objectStorageClient.cdnUrlFor(key));
     }
 
+    /**
+     * Community avatar — deliberately a DIFFERENT upload path than requestPhotoUploadUrl above:
+     * the storage key here uses a random id instead of userId, so the resulting URL (which is
+     * public, shown next to u/{communityUsername}) can never be used to link back to this
+     * account the way a "user/{userId}/..." URL could. Same pattern as CommunityPostService's
+     * image uploads.
+     */
+    public PreSignedUploadResponse requestCommunityAvatarUploadUrl(String filename) {
+        String key = objectStorageClient.buildObjectKey("community-avatar", UUID.randomUUID().toString(), filename);
+        return new PreSignedUploadResponse(
+                objectStorageClient.presignPutUrl(key), key, objectStorageClient.cdnUrlFor(key));
+    }
+
+    @Transactional
+    public UserProfileDto updateCommunityAvatar(UUID userId, String communityAvatarUrl) {
+        User user = getOrThrow(userId);
+        user.setCommunityAvatarUrl(communityAvatarUrl);
+        return toDto(userRepository.save(user));
+    }
+
     private User getOrThrow(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -58,6 +78,7 @@ public class UserService {
     private UserProfileDto toDto(User user) {
         return new UserProfileDto(user.getId(), user.getPhoneNumber(), user.getRole(),
                 user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage(),
-                accountLinkService.isLinked(user.getId()), user.getCommunityUsername(), user.getCommunityProfileId());
+                accountLinkService.isLinked(user.getId()), user.getCommunityUsername(), user.getCommunityProfileId(),
+                user.getCommunityAvatarUrl());
     }
 }
