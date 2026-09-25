@@ -26,6 +26,9 @@ public class BusinessForm {
     private PriceTier priceTier;
     private boolean verified;
     private List<UUID> attributeIds = new ArrayList<>();
+    /** Brand → Branches — the admin panel is the only place a listing can be linked to a brand
+     *  owned by a *different* account (self-service linking lives on BusinessService#create). */
+    private UUID brandId;
 
     public static BusinessForm from(Business business) {
         BusinessForm form = new BusinessForm();
@@ -43,6 +46,7 @@ public class BusinessForm {
         form.setPriceTier(business.getPriceTier());
         form.setVerified(business.isVerified());
         form.setAttributeIds(business.getAttributes().stream().map(a -> a.getId()).toList());
+        form.setBrandId(business.getBrandId());
         return form;
     }
 }

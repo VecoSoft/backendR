@@ -62,7 +62,7 @@ public class SecurityConfig {
                         // public browse/search/profile-view surface (spec §16 consumer capabilities)
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/businesses/**", "/api/v1/categories/**", "/api/v1/cities/**",
-                                "/api/v1/areas/**", "/api/v1/attributes/**").permitAll()
+                                "/api/v1/areas/**", "/api/v1/attributes/**", "/api/v1/brands/**").permitAll()
                         // home page "Recent Activity" feed — must render for logged-out visitors too
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/reviews/recent").permitAll()
                         // business page "Overall rating" bar chart — aggregate counts, no review

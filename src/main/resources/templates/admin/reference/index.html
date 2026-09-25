@@ -31,6 +31,9 @@
         <li class="nav-item">
             <a class="nav-link" th:classappend="${tab == 'attributes'} ? 'active'" th:href="@{/admin/reference-data(tab='attributes')}">Attributes</a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" th:classappend="${tab == 'brands'} ? 'active'" th:href="@{/admin/reference-data(tab='brands')}">Brands</a>
+        </li>
     </ul>
 
     <!-- Categories -->
@@ -178,6 +181,48 @@
                         </td>
                     </tr>
                     <tr th:if="${attributes.isEmpty()}"><td colspan="2" class="admin-table-empty">No attributes yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Brands -->
+    <div th:if="${tab == 'brands'}" class="row g-3">
+        <div class="col-md-4">
+            <div class="admin-form-section">
+                <h2>Add brand</h2>
+                <p class="small text-muted">Owners can self-service-link a business to a brand they already own another listing under. Use this to link a <em>different</em> owner's listing to an existing chain (the cross-owner franchise case) via the business edit form's Brand field.</p>
+                <form th:action="@{/admin/reference-data/brands/new}" method="post">
+                    <input type="text" name="name" class="form-control form-control-sm mb-2" placeholder="e.g. KFC" required/>
+                    <button type="submit" class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg"></i> Add</button>
+                </form>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="b : ${brands}">
+                        <td>
+                            <form th:action="@{/admin/reference-data/brands/{id}/update(id=${b.id})}" method="post"
+                                  class="d-flex gap-2 align-items-center">
+                                <input type="text" name="name" th:value="${b.name}"
+                                       class="form-control form-control-sm" style="min-width: 9rem" required/>
+                                <button type="submit" class="btn btn-sm btn-outline-primary" title="Save name">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            </form>
+                        </td>
+                        <td class="text-end">
+                            <form th:action="@{/admin/reference-data/brands/{id}/delete(id=${b.id})}" method="post"
+                                  onsubmit="return confirm('Delete this brand? Branches keep their listing but lose the chain grouping.');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${brands.isEmpty()}"><td colspan="2" class="admin-table-empty">No brands yet.</td></tr>
                     </tbody>
                 </table>
             </div>

@@ -40,6 +40,19 @@ public record BusinessResponse(
         boolean claimed,
         BigDecimal averageRating,
         int reviewCount,
+        /**
+         * Non-null only when this listing is part of a chain. Unlike categoryModules/hasUpdates/etc
+         * below, these are populated on BOTH search/list AND detail responses — the search grid
+         * needs brandId/branchCount to decide whether to render a grouped "N branches" card, and
+         * the detail page's branch-switcher pill needs them too.
+         */
+        UUID brandId,
+        String brandName,
+        String brandSlug,
+        /** True total live branch count for the brand (not just how many are on the current search page). */
+        Integer branchCount,
+        /** Combined rating across every live branch of the brand — SUM(rating_sum)/SUM(review_count) rounded the same way as the per-business rollup. Null when brandId is null. */
+        BigDecimal brandAverageRating,
         boolean flagged,
         String flagReason,
         Instant flaggedAt,
@@ -73,11 +86,16 @@ public record BusinessResponse(
 ) {
     /** photoUrls: cover photo (if any) followed by gallery photos, in display order — card carousel source. */
     public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed) {
-        return from(b, photoUrls, claimed, null, null, null, null, null);
+        return from(b, photoUrls, claimed, null, null, null, null, null, null);
+    }
+
+    /** Same as the 3-arg overload, plus the brand summary (search/list responses — no detail-only fields). */
+    public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed, BrandSummary brand) {
+        return from(b, photoUrls, claimed, brand, null, null, null, null, null);
     }
 
     /** Detail-view variant: also carries the category-module presence flags, the updates flag, the FAQ flag, structured hours, and hours exceptions. */
-    public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed,
+    public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed, BrandSummary brand,
                                         CategoryModuleFlags categoryModules, Boolean hasUpdates, Boolean hasFaq,
                                         List<OperatingHoursEntry> structuredHours,
                                         List<HoursExceptionEntry> hoursExceptions) {
@@ -93,6 +111,9 @@ public record BusinessResponse(
                 b.getPriceTier(),
                 b.getAttributes().stream().map(BusinessAttribute::getName).toList(),
                 b.isVerified(), claimed, b.getAverageRating(), b.getReviewCount(),
+                brand != null ? brand.id() : null, brand != null ? brand.name() : null,
+                brand != null ? brand.slug() : null, brand != null ? brand.branchCount() : null,
+                brand != null ? brand.averageRating() : null,
                 b.isFlagged(), b.getFlagReason(), b.getFlaggedAt(),
                 b.getTotalLikeCount(), b.getTotalDislikeCount(), b.getTotalLoveCount(), b.getTotalWowCount(),
                 categoryModules, hasUpdates, hasFaq, structuredHours, hoursExceptions

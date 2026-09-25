@@ -159,6 +159,16 @@ public class Business {
     @Column(name = "rating_sum", nullable = false)
     private int ratingSum = 0;
 
+    /**
+     * Nullable — set independently per row when this listing is a branch of a chain.
+     * Deliberately a plain UUID column, not @ManyToOne: brand name/slug/rating rollup
+     * are always fetched via a batched lookup (see BusinessService#brandSummariesFor),
+     * never a lazy association, so this can't trigger a LazyInitializationException
+     * under open-in-view=false and adds no join to the hot native search query.
+     */
+    @Column(name = "brand_id")
+    private UUID brandId;
+
     @Column(name = "deleted_at")
     private Instant deletedAt;
 

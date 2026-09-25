@@ -26,6 +26,7 @@ public class AdminBusinessController {
     private final CityRepository cityRepository;
     private final AreaRepository areaRepository;
     private final BusinessAttributeRepository attributeRepository;
+    private final BrandRepository brandRepository;
     private final ReviewRepository reviewRepository;
     private final BusinessPhotoRepository businessPhotoRepository;
     private final BusinessReviewSummaryRepository businessReviewSummaryRepository;
@@ -35,6 +36,7 @@ public class AdminBusinessController {
                                     CityRepository cityRepository,
                                     AreaRepository areaRepository,
                                     BusinessAttributeRepository attributeRepository,
+                                    BrandRepository brandRepository,
                                     ReviewRepository reviewRepository,
                                     BusinessPhotoRepository businessPhotoRepository,
                                     BusinessReviewSummaryRepository businessReviewSummaryRepository) {
@@ -43,6 +45,7 @@ public class AdminBusinessController {
         this.cityRepository = cityRepository;
         this.areaRepository = areaRepository;
         this.attributeRepository = attributeRepository;
+        this.brandRepository = brandRepository;
         this.reviewRepository = reviewRepository;
         this.businessPhotoRepository = businessPhotoRepository;
         this.businessReviewSummaryRepository = businessReviewSummaryRepository;
@@ -162,6 +165,7 @@ public class AdminBusinessController {
         model.addAttribute("cities", cityRepository.findAll(Sort.by("name")));
         model.addAttribute("areas", areaRepository.findAllWithCity());
         model.addAttribute("attributes", attributeRepository.findAll(Sort.by("name")));
+        model.addAttribute("brands", brandRepository.findByDeletedAtIsNull(Sort.by("name")));
         model.addAttribute("priceTiers", PriceTier.values());
     }
 }

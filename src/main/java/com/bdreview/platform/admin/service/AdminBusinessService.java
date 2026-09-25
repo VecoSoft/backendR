@@ -101,6 +101,7 @@ public class AdminBusinessService {
                 .priceTier(form.getPriceTier())
                 .attributes(resolveAttributes(form.getAttributeIds()))
                 .verified(form.isVerified())
+                .brandId(form.getBrandId())
                 .build();
         return businessRepository.save(business);
     }
@@ -121,6 +122,7 @@ public class AdminBusinessService {
         business.setPriceTier(form.getPriceTier());
         business.setAttributes(resolveAttributes(form.getAttributeIds()));
         business.setVerified(form.isVerified());
+        business.setBrandId(form.getBrandId());
         // slug stays immutable, exactly as in business.BusinessService#update
         return businessRepository.save(business);
     }

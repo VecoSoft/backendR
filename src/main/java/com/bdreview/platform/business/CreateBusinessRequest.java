@@ -26,6 +26,12 @@ public record CreateBusinessRequest(
         @Size(max = 20) String whatsappNumber,
         @Email @Size(max = 255) String email,
         @Size(max = 500) String facebookUrl,
-        @Size(max = 500) String instagramUrl
+        @Size(max = 500) String instagramUrl,
+
+        // Brand → Branches — optional, mutually exclusive. brandId links this listing to an
+        // existing chain (only allowed when the owner already owns another business under it —
+        // see BusinessService#create); newBrandName starts a new chain, always self-service.
+        UUID brandId,
+        @Size(max = 255) String newBrandName
 ) {
 }

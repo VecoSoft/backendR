@@ -36,6 +36,14 @@
             </select>
             <div class="form-text">Areas belong to a city — pick the matching one for the city selected above.</div>
         </div>
+        <div class="col-md-4">
+            <label class="form-label small fw-semibold">Brand (optional)</label>
+            <select th:field="*{brandId}" class="form-select">
+                <option value="">No brand</option>
+                <option th:each="b : ${brands}" th:value="${b.id}" th:text="${b.name}"></option>
+            </select>
+            <div class="form-text">Links this listing as a branch of a chain. Use this to link a listing owned by a <em>different</em> account to an existing brand — same-owner branches can self-service this when creating a new listing.</div>
+        </div>
 
         <div class="col-md-6">
             <label class="form-label small fw-semibold">Contact number</label>

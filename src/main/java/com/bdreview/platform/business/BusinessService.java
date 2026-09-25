@@ -44,6 +44,8 @@ public class BusinessService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final BusinessRepository businessRepository;
+    private final BrandRepository brandRepository;
+    private final BrandService brandService;
     private final CategoryRepository categoryRepository;
     private final CityRepository cityRepository;
     private final AreaRepository areaRepository;
@@ -60,6 +62,8 @@ public class BusinessService {
     private final BusinessService self;
 
     public BusinessService(BusinessRepository businessRepository,
+                           BrandRepository brandRepository,
+                           BrandService brandService,
                            CategoryRepository categoryRepository,
                            CityRepository cityRepository,
                            AreaRepository areaRepository,
@@ -75,6 +79,8 @@ public class BusinessService {
                            com.bdreview.platform.updates.BusinessUpdateService businessUpdateService,
                            @Lazy BusinessService self) {
         this.businessRepository = businessRepository;
+        this.brandRepository = brandRepository;
+        this.brandService = brandService;
         this.categoryRepository = categoryRepository;
         this.cityRepository = cityRepository;
         this.areaRepository = areaRepository;
@@ -107,8 +113,15 @@ public class BusinessService {
 
         validateEstablishedYear(request.establishedYear());
 
+        UUID resolvedBrandId = resolveBrandForCreate(ownerUserId, request);
+
         String normalizedPhone = PhoneNumberUtils.normalize(request.contactNumber());
-        List<Business> duplicates = businessRepository.findLikelyDuplicates(request.name(), area.getId(), normalizedPhone);
+        // A chain legitimately reuses one head-office number across branches — the exact-phone
+        // duplicate check would false-positive on a declared branch, so it's skipped for one
+        // (the area-scoped name-similarity check stays active, still blocking the same branch
+        // being created twice). contact_number = NULL never matches in SQL.
+        String phoneForDuplicateCheck = resolvedBrandId != null ? null : normalizedPhone;
+        List<Business> duplicates = businessRepository.findLikelyDuplicates(request.name(), area.getId(), phoneForDuplicateCheck);
         if (!duplicates.isEmpty()) {
             Business match = duplicates.get(0);
             throw new ConflictException("\"" + match.getName() + "\" already looks like a listing for this business in "
@@ -122,6 +135,7 @@ public class BusinessService {
                 .category(category)
                 .city(city)
                 .area(area)
+                .brandId(resolvedBrandId)
                 .contactNumber(normalizedPhone)
                 .operatingHours(request.operatingHours())
                 .description(request.description())
@@ -180,7 +194,8 @@ public class BusinessService {
         Business saved = businessRepository.save(business);
         List<String> galleryUrls = businessPhotoRepository.findByBusinessIdOrderBySortOrderAsc(saved.getId())
                 .stream().map(BusinessPhoto::getUrl).toList();
-        return BusinessResponse.from(saved, photoUrlsFor(saved, galleryUrls), isClaimed(saved.getOwnerUserId()));
+        return BusinessResponse.from(saved, photoUrlsFor(saved, galleryUrls), isClaimed(saved.getOwnerUserId()),
+                brandSummariesFor(List.of(saved)).get(saved.getId()));
     }
 
     @Transactional
@@ -363,6 +378,7 @@ public class BusinessService {
                 .stream().map(HoursExceptionEntry::from).toList();
         return BusinessResponse.from(business, photoUrlsFor(business, galleryUrls),
                 isClaimed(business.getOwnerUserId()),
+                brandSummariesFor(List.of(business)).get(business.getId()),
                 catalogService.moduleFlags(business.getId()),
                 businessUpdateService.hasPublished(business.getId()),
                 catalogService.hasFaq(business.getId()),
@@ -379,9 +395,31 @@ public class BusinessService {
                 radiusMeters, q, location, sort, pageable);
         Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(results.getContent());
         Map<UUID, Boolean> claimedByOwner = claimedByOwner(results.getContent());
-        return results.map(b -> BusinessResponse.from(b,
-                photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
-                claimedByOwner.getOrDefault(b.getOwnerUserId(), true)));
+        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(results.getContent());
+        List<BusinessResponse> mapped = results.getContent().stream()
+                .map(b -> BusinessResponse.from(b,
+                        photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
+                        claimedByOwner.getOrDefault(b.getOwnerUserId(), true),
+                        brandByBusiness.get(b.getId())))
+                .toList();
+        // Collapse rows sharing a brand into one card ("KFC — 5 branches" instead of N cards).
+        // branchCount on the surviving row is still the TRUE total across all live branches (from
+        // the batched brandSummariesFor lookup above), not just how many happen to be on this page.
+        // Known limitation: totalElements/totalPages below still reflect raw row counts, so a page
+        // can render fewer than `size` cards when it contains multiple branches of one brand.
+        return new org.springframework.data.domain.PageImpl<>(
+                collapseBrandDuplicates(mapped), pageable, results.getTotalElements());
+    }
+
+    private List<BusinessResponse> collapseBrandDuplicates(List<BusinessResponse> content) {
+        List<BusinessResponse> out = new ArrayList<>();
+        Set<UUID> seenBrandIds = new HashSet<>();
+        for (BusinessResponse b : content) {
+            if (b.brandId() == null || seenBrandIds.add(b.brandId())) {
+                out.add(b);
+            }
+        }
+        return out;
     }
 
     /**
@@ -397,12 +435,31 @@ public class BusinessService {
         Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(businesses);
         Map<UUID, List<OperatingHoursEntry>> hoursByBusiness = structuredHoursByBusiness(businesses);
         Map<UUID, List<HoursExceptionEntry>> exceptionsByBusiness = hoursExceptionsByBusiness(businesses);
+        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(businesses);
         boolean claimed = isClaimed(ownerUserId);
         return businesses.stream()
                 .map(b -> BusinessResponse.from(b,
                         photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())), claimed,
+                        brandByBusiness.get(b.getId()),
                         null, null, null, hoursByBusiness.getOrDefault(b.getId(), List.of()),
                         exceptionsByBusiness.getOrDefault(b.getId(), List.of())))
+                .toList();
+    }
+
+    /** Every live branch of a brand — GET /api/v1/brands/{slug}/branches. */
+    @Transactional(readOnly = true)
+    public List<BusinessResponse> businessesForBrand(String brandSlug) {
+        Brand brand = brandRepository.findBySlugAndDeletedAtIsNull(brandSlug)
+                .orElseThrow(() -> new ResourceNotFoundException("Brand not found: " + brandSlug));
+        List<Business> businesses = businessRepository.findByBrandIdAndDeletedAtIsNull(brand.getId());
+        Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(businesses);
+        Map<UUID, Boolean> claimedByOwner = claimedByOwner(businesses);
+        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(businesses);
+        return businesses.stream()
+                .map(b -> BusinessResponse.from(b,
+                        photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
+                        claimedByOwner.getOrDefault(b.getOwnerUserId(), true),
+                        brandByBusiness.get(b.getId())))
                 .toList();
     }
 
@@ -415,10 +472,12 @@ public class BusinessService {
         List<Business> matches = businessRepository.searchForClaim(query.trim());
         Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(matches);
         Map<UUID, Boolean> claimedByOwner = claimedByOwner(matches);
+        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(matches);
         return matches.stream()
                 .map(b -> BusinessResponse.from(b,
                         photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
-                        claimedByOwner.getOrDefault(b.getOwnerUserId(), true)))
+                        claimedByOwner.getOrDefault(b.getOwnerUserId(), true),
+                        brandByBusiness.get(b.getId())))
                 .toList();
     }
 
@@ -459,6 +518,37 @@ public class BusinessService {
         return byBusiness;
     }
 
+    /**
+     * Batched brand lookup grouped by business id — one round trip for every distinct
+     * brand_id present, same convention as galleryUrlsByBusiness/claimedByOwner. Rating
+     * is rolled up on read (SUM(rating_sum)/SUM(review_count)), rounded the same way as
+     * BusinessRepository#applyRatingAggregateDelta — see Business#brandId's javadoc for
+     * why this isn't a mirrored atomic delta instead.
+     */
+    private Map<UUID, BrandSummary> brandSummariesFor(List<Business> businesses) {
+        List<UUID> brandIds = businesses.stream().map(Business::getBrandId).filter(java.util.Objects::nonNull).distinct().toList();
+        if (brandIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Brand> brandsById = brandRepository.findByIdInAndDeletedAtIsNull(brandIds).stream()
+                .collect(Collectors.toMap(Brand::getId, b -> b));
+        Map<UUID, com.bdreview.platform.business.BrandAggregateRow> aggregateByBrand = brandRepository.aggregatesFor(brandIds).stream()
+                .collect(Collectors.toMap(BrandAggregateRow::getBrandId, row -> row));
+        Map<UUID, BrandSummary> byBusiness = new HashMap<>();
+        for (Business b : businesses) {
+            if (b.getBrandId() == null) continue;
+            Brand brand = brandsById.get(b.getBrandId());
+            if (brand == null) continue; // brand soft-deleted since being linked — treat this listing as unbranded
+            BrandAggregateRow row = aggregateByBrand.get(brand.getId());
+            int branchCount = row != null ? (int) row.getBranchCount() : 0;
+            java.math.BigDecimal avgRating = row == null || row.getReviewCount() <= 0 ? java.math.BigDecimal.ZERO
+                    : java.math.BigDecimal.valueOf(row.getRatingSum())
+                            .divide(java.math.BigDecimal.valueOf(row.getReviewCount()), 2, java.math.RoundingMode.HALF_UP);
+            byBusiness.put(b.getId(), new BrandSummary(brand.getId(), brand.getName(), brand.getSlug(), branchCount, avgRating));
+        }
+        return byBusiness;
+    }
+
     /** A listing is "claimed" once its owner is a real (non-admin) user — mirrors BusinessClaimService#ensureClaimable. */
     private boolean isClaimed(UUID ownerUserId) {
         return userRepository.findById(ownerUserId).map(u -> u.getRole() != UserRole.ADMIN).orElse(true);
@@ -486,6 +576,37 @@ public class BusinessService {
         }
         ordered.addAll(galleryUrls);
         return ordered.stream().collect(Collectors.toList());
+    }
+
+    /**
+     * Brand → Branches linking at create time. Declaring a brand-new chain (newBrandName) is
+     * always self-service — it's just a label on the owner's own listing, zero risk. Linking to
+     * an EXISTING brand (brandId) is self-service only when the owner already owns another
+     * business under that brand; the true cross-owner franchise case (a different account's
+     * listing joining a chain) needs an admin, via the admin business-edit screen, to prevent
+     * brand squatting.
+     */
+    private UUID resolveBrandForCreate(UUID ownerUserId, CreateBusinessRequest request) {
+        boolean hasNewName = request.newBrandName() != null && !request.newBrandName().isBlank();
+        if (hasNewName && request.brandId() != null) {
+            throw new BadRequestException("Provide either an existing brand or a new brand name, not both.");
+        }
+        if (hasNewName) {
+            return brandService.createOrReuseByName(request.newBrandName()).getId();
+        }
+        if (request.brandId() == null) {
+            return null;
+        }
+        if (!brandRepository.existsById(request.brandId())) {
+            throw new ResourceNotFoundException("Brand not found");
+        }
+        boolean ownerAlreadyOnThisBrand = businessRepository.findByOwnerUserIdAndDeletedAtIsNull(ownerUserId).stream()
+                .anyMatch(b -> request.brandId().equals(b.getBrandId()));
+        if (!ownerAlreadyOnThisBrand) {
+            throw new ForbiddenException(
+                    "Linking to a brand you don't already have a listing under needs admin approval — contact support.");
+        }
+        return request.brandId();
     }
 
     /** Upper bound is dynamic (current year), so this is manual validation rather than a bean-validation annotation. */

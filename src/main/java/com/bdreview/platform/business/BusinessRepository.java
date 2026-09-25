@@ -20,6 +20,9 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
 
     boolean existsBySlugAndDeletedAtIsNull(String slug);
 
+    /** Every live branch of a brand — backs GET /api/v1/brands/{slug}/branches. */
+    List<Business> findByBrandIdAndDeletedAtIsNull(UUID brandId);
+
     // -----------------------------------------------------------------
     // §2 Business Claim Flow — free-text "is my business already listed"
     // search, surfaced before the "add a business" form is filled in.
