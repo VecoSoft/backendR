@@ -116,16 +116,20 @@ public class BusinessService {
         UUID resolvedBrandId = resolveBrandForCreate(ownerUserId, request);
 
         String normalizedPhone = PhoneNumberUtils.normalize(request.contactNumber());
-        // A chain legitimately reuses one head-office number across branches — the exact-phone
-        // duplicate check would false-positive on a declared branch, so it's skipped for one
-        // (the area-scoped name-similarity check stays active, still blocking the same branch
-        // being created twice). contact_number = NULL never matches in SQL.
-        String phoneForDuplicateCheck = resolvedBrandId != null ? null : normalizedPhone;
-        List<Business> duplicates = businessRepository.findLikelyDuplicates(request.name(), area.getId(), phoneForDuplicateCheck);
-        if (!duplicates.isEmpty()) {
-            Business match = duplicates.get(0);
-            throw new ConflictException("\"" + match.getName() + "\" already looks like a listing for this business in "
-                    + area.getName() + ". If this is your business, claim or dispute that listing instead of creating a new one.");
+        // A declared brand (new or existing) is a deliberate "this is intentionally a related
+        // listing" signal, already gated by resolveBrandForCreate's ownership check above — a
+        // real chain has multiple outlets that legitimately share a head-office phone number and
+        // often sit in the same broad admin "area" (areas aren't granular enough to assume two
+        // branches 1-2km apart are actually the same physical location). The duplicate guard
+        // exists to stop accidental/malicious clones of an UNRELATED listing, which a brand
+        // declaration already rules out, so it's skipped entirely for this path.
+        if (resolvedBrandId == null) {
+            List<Business> duplicates = businessRepository.findLikelyDuplicates(request.name(), area.getId(), normalizedPhone);
+            if (!duplicates.isEmpty()) {
+                Business match = duplicates.get(0);
+                throw new ConflictException("\"" + match.getName() + "\" already looks like a listing for this business in "
+                        + area.getName() + ". If this is your business, claim or dispute that listing instead of creating a new one.");
+            }
         }
 
         Business business = Business.builder()
