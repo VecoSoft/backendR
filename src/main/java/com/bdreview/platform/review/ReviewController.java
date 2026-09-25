@@ -82,8 +82,12 @@ public class ReviewController {
     @GetMapping("/business/{businessId}/dashboard")
     public ResponseEntity<PageResponse<ReviewResponse>> ownerDashboard(
             @PathVariable UUID businessId,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        var results = reviewService.ownerDashboardList(CurrentUser.id(), businessId, page, size).map(this::toResponse);
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Short rating,
+            @RequestParam(defaultValue = "false") boolean unrepliedOnly,
+            @RequestParam(defaultValue = "false") boolean flaggedOnly) {
+        var results = reviewService.ownerDashboardList(CurrentUser.id(), businessId, page, size,
+                rating, unrepliedOnly, flaggedOnly).map(this::toResponse);
         return ResponseEntity.ok(PageResponse.of(results));
     }
 

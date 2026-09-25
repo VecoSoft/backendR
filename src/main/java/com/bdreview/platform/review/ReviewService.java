@@ -229,11 +229,17 @@ public class ReviewService {
                 businessId, VisibilityStatus.HIDDEN, PageRequest.of(page, PageRequestDefaults.clamp(size), sortOrder));
     }
 
-    /** §7 owner dashboard: full list including NOT_RECOMMENDED, excluding only HIDDEN/soft-deleted handled by repo. */
-    public Page<Review> ownerDashboardList(UUID ownerUserId, UUID businessId, int page, int size) {
+    /**
+     * §7 owner dashboard: full list including NOT_RECOMMENDED, excluding only HIDDEN/soft-deleted.
+     * Newest-first by default (was unordered — whatever order Postgres happened to return rows
+     * in) with optional rating/unreplied/flagged filters, all null-safe-skip when unset.
+     */
+    public Page<Review> ownerDashboardList(UUID ownerUserId, UUID businessId, int page, int size,
+                                            Short rating, boolean unrepliedOnly, boolean flaggedOnly) {
         getOwnedBusinessOrThrow(ownerUserId, businessId);
-        return reviewRepository.findByBusinessIdAndDeletedAtIsNull(
-                businessId, PageRequest.of(page, PageRequestDefaults.clamp(size)));
+        Sort sortOrder = Sort.by(Sort.Direction.DESC, "createdAt");
+        return reviewRepository.ownerDashboardSearch(businessId, rating, unrepliedOnly, flaggedOnly,
+                PageRequest.of(page, PageRequestDefaults.clamp(size), sortOrder));
     }
 
     /**

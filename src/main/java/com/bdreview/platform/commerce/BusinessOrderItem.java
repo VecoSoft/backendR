@@ -32,6 +32,10 @@ public class BusinessOrderItem {
     @Column(name = "source_item_id")
     private UUID sourceItemId;
 
+    /** The active offer (see V45) that priced this line, if any — lets OrderService track/cap real usage against Offer#redemptionCount. */
+    @Column(name = "offer_id")
+    private UUID offerId;
+
     @Column(name = "item_name_snapshot", nullable = false, length = 160)
     private String itemNameSnapshot;
 

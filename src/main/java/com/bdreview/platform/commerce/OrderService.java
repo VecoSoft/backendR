@@ -96,6 +96,11 @@ public class OrderService {
                 .collect(java.util.stream.Collectors.toMap(Offer::getMenuItemId, o -> o, (a, b) -> a));
 
         List<BusinessOrderItem> items = new ArrayList<>();
+        // Distinct offers actually used in this order — redemptionCount is bumped once per
+        // offer per order (not per unit) after the order is safely saved, and the running
+        // in-memory value here is what maxTotalRedemptions is checked against below, so two
+        // lines linked to the same offer within one order can't double-spend the cap.
+        Set<UUID> offersUsed = new LinkedHashSet<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         for (Map.Entry<UUID, Integer> e : qtyById.entrySet()) {
             MenuItem mi = menuRepo.findById(e.getKey())
@@ -108,6 +113,22 @@ public class OrderService {
                 throw new BadRequestException("\"" + mi.getName() + "\" is not available for ordering right now.");
             }
             Offer activeOffer = activeOfferByMenuItemId.get(mi.getId());
+            if (activeOffer != null) {
+                // Previously only enforced in the separate in-person claim/redeem-code flow —
+                // an online order could silently blow past a cap the owner explicitly set.
+                if (activeOffer.getMaxTotalRedemptions() != null
+                        && activeOffer.getRedemptionCount() + (offersUsed.contains(activeOffer.getId()) ? 1 : 0)
+                                >= activeOffer.getMaxTotalRedemptions()) {
+                    throw new BadRequestException("\"" + activeOffer.getTitle() + "\" has reached its redemption limit.");
+                }
+                if (activeOffer.getMaxRedemptionsPerUser() != null
+                        && itemRepo.countByOfferIdAndCustomerUserId(activeOffer.getId(), customerUserId)
+                                >= activeOffer.getMaxRedemptionsPerUser()) {
+                    throw new BadRequestException(
+                            "You've already used \"" + activeOffer.getTitle() + "\" the maximum number of times.");
+                }
+                offersUsed.add(activeOffer.getId());
+            }
             BigDecimal unit = money(activeOffer != null && activeOffer.getOfferPrice() != null
                     ? activeOffer.getOfferPrice() : mi.getPrice());
             int qty = e.getValue();
@@ -121,6 +142,7 @@ public class OrderService {
             items.add(BusinessOrderItem.builder()
                     .sourceType(OrderItemSource.MENU_ITEM)
                     .sourceItemId(mi.getId())
+                    .offerId(activeOffer != null ? activeOffer.getId() : null)
                     .itemNameSnapshot(mi.getName())
                     .unitPriceSnapshot(unit)
                     .quantity(qty)
@@ -180,6 +202,9 @@ public class OrderService {
             it.setOrderId(order.getId());
         }
         itemRepo.saveAll(items);
+        for (UUID offerId : offersUsed) {
+            offerRepo.adjustRedemptionCount(offerId, 1);
+        }
         eventRepo.save(OrderStatusEvent.builder()
                 .orderId(order.getId()).fromStatus(null).toStatus(OrderStatus.PENDING)
                 .actorUserId(customerUserId).note("Order placed").build());
@@ -228,6 +253,7 @@ public class OrderService {
             throw new BadRequestException("Only a pending order can be cancelled.");
         }
         applyTransition(order, OrderStatus.CANCELLED, customerUserId, "Cancelled by customer");
+        releaseOfferRedemptions(orderId);
         Business business = guard.getLiveOrThrow(order.getBusinessId());
         return toResponse(order, business, itemRepo.findByOrderId(orderId), timeline(orderId));
     }
@@ -278,6 +304,9 @@ public class OrderService {
             order.setEstimatedReadyAt(Instant.now().plusSeconds(60L * (prepMinutes != null ? prepMinutes : DEFAULT_PREP_MINUTES)));
         }
         applyTransition(order, target, ownerUserId, note);
+        if (target == OrderStatus.CANCELLED || target == OrderStatus.REJECTED) {
+            releaseOfferRedemptions(orderId);
+        }
 
         NotificationType type = switch (target) {
             case ACCEPTED -> NotificationType.ORDER_ACCEPTED;
@@ -305,6 +334,7 @@ public class OrderService {
         for (BusinessOrder order : orderRepo.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff)) {
             order.setRejectionReason("Auto-cancelled — the business didn't respond in time");
             applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within 24 hours");
+            releaseOfferRedemptions(order.getId());
             notifier.statusChanged(order.getCustomerUserId(), order.getId(), order.getOrderNumber(),
                     OrderStatus.CANCELLED, NotificationType.ORDER_STATUS_CHANGED);
         }
@@ -313,6 +343,15 @@ public class OrderService {
     // ================================================================
     // Helpers
     // ================================================================
+    /** Cancelled/rejected orders never actually delivered their offer's discount — undo the redemptionCount bump from placement. */
+    private void releaseOfferRedemptions(UUID orderId) {
+        itemRepo.findByOrderId(orderId).stream()
+                .map(BusinessOrderItem::getOfferId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(offerId -> offerRepo.adjustRedemptionCount(offerId, -1));
+    }
+
     private void applyTransition(BusinessOrder order, OrderStatus target, UUID actor, String note) {
         OrderStatus from = order.getStatus();
         order.setStatus(target);

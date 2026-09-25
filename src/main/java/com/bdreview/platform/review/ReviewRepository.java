@@ -21,6 +21,26 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     /** Owner dashboard: full review list including NOT_RECOMMENDED, excluding only HIDDEN/soft-deleted. */
     Page<Review> findByBusinessIdAndDeletedAtIsNull(UUID businessId, Pageable pageable);
 
+    /**
+     * Owner dashboard with optional filters — rating/unreplied/flagged all null-safe-skip when
+     * unset, so this replaces the plain finder above once any filter (or an explicit sort, which
+     * callers pass via {@code pageable}) is needed. "Flagged" means reported by a user, sourced
+     * from the report package rather than a field on Review itself.
+     */
+    @Query("""
+            SELECT r FROM Review r
+            WHERE r.businessId = :businessId AND r.deletedAt IS NULL
+              AND (:rating IS NULL OR r.rating = :rating)
+              AND (:unrepliedOnly = false OR r.ownerReply IS NULL)
+              AND (:flaggedOnly = false OR r.id IN (
+                  SELECT rp.targetId FROM Report rp
+                  WHERE rp.targetType = com.bdreview.platform.report.ReportTargetType.REVIEW
+              ))
+            """)
+    Page<Review> ownerDashboardSearch(@Param("businessId") UUID businessId, @Param("rating") Short rating,
+                                       @Param("unrepliedOnly") boolean unrepliedOnly,
+                                       @Param("flaggedOnly") boolean flaggedOnly, Pageable pageable);
+
     /** Admin moderation queue (spec §12): medium-confidence flags across all businesses. */
     Page<Review> findByVisibilityStatusAndDeletedAtIsNull(VisibilityStatus visibilityStatus, Pageable pageable);
 
