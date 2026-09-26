@@ -2,6 +2,7 @@ package com.bdreview.platform.catalog;
 
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.business.BusinessRepository;
+import com.bdreview.platform.business.CategoryKind;
 import com.bdreview.platform.catalog.CatalogRequests.*;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
@@ -40,6 +41,7 @@ public class CatalogService {
     private final FeaturedProductRepository productRepository;
     private final FaqRepository faqRepository;
     private final OfferRepository offerRepository;
+    private final BusinessAutoReplyRepository autoReplyRepository;
 
     public CatalogService(BusinessRepository businessRepository,
                           ServiceOfferingRepository serviceRepository,
@@ -47,7 +49,8 @@ public class CatalogService {
                           MenuItemRepository menuRepository,
                           FeaturedProductRepository productRepository,
                           FaqRepository faqRepository,
-                          OfferRepository offerRepository) {
+                          OfferRepository offerRepository,
+                          BusinessAutoReplyRepository autoReplyRepository) {
         this.businessRepository = businessRepository;
         this.serviceRepository = serviceRepository;
         this.teamRepository = teamRepository;
@@ -55,6 +58,7 @@ public class CatalogService {
         this.productRepository = productRepository;
         this.faqRepository = faqRepository;
         this.offerRepository = offerRepository;
+        this.autoReplyRepository = autoReplyRepository;
     }
 
     // ================================================================
@@ -365,6 +369,125 @@ public class CatalogService {
     @Transactional(readOnly = true)
     public boolean hasFaq(UUID businessId) {
         return faqRepository.existsByBusinessId(businessId);
+    }
+
+    // ================================================================
+    // Quick-reply auto-answers (business_auto_reply) — business-wide, powers
+    // the chat widget's quick-question chips. A fresh business gets a
+    // category-appropriate default set (English + Bengali) seeded lazily on
+    // first read, so every business has something to show without any setup
+    // step — owners then edit/delete/add from there like any other module.
+    // ================================================================
+    @Transactional
+    public List<BusinessAutoReply> autoReplies(UUID businessId) {
+        if (!autoReplyRepository.existsByBusinessId(businessId)) {
+            Business business = businessRepository.findById(businessId).orElse(null);
+            CategoryKind kind = business != null && business.getCategory() != null
+                    ? business.getCategory().getKind() : CategoryKind.GENERAL;
+            List<BusinessAutoReply> defaults = defaultAutoRepliesFor(kind);
+            for (int i = 0; i < defaults.size(); i++) {
+                BusinessAutoReply row = defaults.get(i);
+                row.setBusinessId(businessId);
+                row.setSortOrder(i);
+            }
+            autoReplyRepository.saveAll(defaults);
+        }
+        return autoReplyRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    }
+
+    @Transactional
+    public BusinessAutoReply addAutoReply(UUID ownerUserId, UUID businessId, AutoReplyRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        long existing = autoReplyRepository.countByBusinessId(businessId);
+        if (existing >= MAX_PER_MODULE) {
+            throw new BadRequestException("This list is full (max " + MAX_PER_MODULE + ").");
+        }
+        return autoReplyRepository.save(BusinessAutoReply.builder()
+                .businessId(businessId)
+                .question(req.question().trim())
+                .answer(req.answer().trim())
+                .language(null)
+                .systemDefault(false)
+                .sortOrder((int) existing)
+                .build());
+    }
+
+    @Transactional
+    public BusinessAutoReply updateAutoReply(UUID ownerUserId, UUID businessId, UUID id, AutoReplyRequest req) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        BusinessAutoReply row = ownedRow(autoReplyRepository.findById(id), businessId, BusinessAutoReply::getBusinessId);
+        row.setQuestion(req.question().trim());
+        row.setAnswer(req.answer().trim());
+        return autoReplyRepository.save(row);
+    }
+
+    @Transactional
+    public void deleteAutoReply(UUID ownerUserId, UUID businessId, UUID id) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        autoReplyRepository.deleteByIdAndBusinessId(id, businessId);
+    }
+
+    @Transactional
+    public List<BusinessAutoReply> reorderAutoReplies(UUID ownerUserId, UUID businessId, List<UUID> orderedIds) {
+        getOwnedOrThrow(ownerUserId, businessId);
+        List<BusinessAutoReply> rows = autoReplyRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+        applyReorder(rows, orderedIds, BusinessAutoReply::getId, BusinessAutoReply::setSortOrder, autoReplyRepository);
+        return autoReplyRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    }
+
+    /** Placeholder defaults the owner is expected to edit — English + Bengali variants of the
+     *  same 4 questions per category bucket, mirroring the frontend's own quickRepliesFor() split. */
+    private List<BusinessAutoReply> defaultAutoRepliesFor(CategoryKind kind) {
+        String[][] en;
+        String[][] bn;
+        if (kind == CategoryKind.RESTAURANT) {
+            en = new String[][]{
+                    {"Is delivery available?", "Yes! Message us your order details and we'll confirm delivery to your area."},
+                    {"Are you open now?", "Please check our listed hours above, or ask here and we'll confirm right away."},
+                    {"Can I book a table?", "Yes, let us know the date, time and number of guests and we'll confirm your table."},
+                    {"Where are you located?", "You can find our exact address and map on this page under Location."},
+            };
+            bn = new String[][]{
+                    {"ডেলিভারি সুবিধা আছে কি?", "হ্যাঁ! আপনার অর্ডারের বিস্তারিত জানিয়ে মেসেজ করুন, আমরা ডেলিভারি নিশ্চিত করব।"},
+                    {"আপনারা কি এখন খোলা আছেন?", "উপরে উল্লেখিত সময়সূচী দেখুন, অথবা এখানে জিজ্ঞাসা করুন, আমরা দ্রুত নিশ্চিত করব।"},
+                    {"আমি কি টেবিল বুক করতে পারি?", "হ্যাঁ, তারিখ, সময় এবং কতজন থাকবেন জানালে আমরা টেবিল নিশ্চিত করব।"},
+                    {"আপনারা কোথায় অবস্থিত?", "এই পেজে Location অংশে আমাদের সঠিক ঠিকানা ও মানচিত্র পাবেন।"},
+            };
+        } else if (kind == CategoryKind.SALON || kind == CategoryKind.CLINIC) {
+            en = new String[][]{
+                    {"What are your prices?", "Prices vary by service — tell us what you're interested in and we'll share the details."},
+                    {"Do you have a slot today?", "Let us know a preferred time and we'll check today's availability for you."},
+                    {"Do I need an appointment?", "We recommend booking ahead to avoid waiting — message us a convenient time."},
+                    {"Where are you located?", "You can find our exact address and map on this page under Location."},
+            };
+            bn = new String[][]{
+                    {"আপনাদের দাম কত?", "সেবাভেদে দাম ভিন্ন — কোন সেবাটি লাগবে জানালে আমরা বিস্তারিত জানাব।"},
+                    {"আজকে কোনো স্লট খালি আছে?", "আপনার পছন্দের সময় জানালে আমরা আজকের খালি স্লট চেক করব।"},
+                    {"অ্যাপয়েন্টমেন্ট লাগবে কি?", "অপেক্ষা এড়াতে আগে থেকে বুক করার পরামর্শ দিচ্ছি — সুবিধাজনক সময় জানান।"},
+                    {"আপনারা কোথায় অবস্থিত?", "এই পেজে Location অংশে আমাদের সঠিক ঠিকানা ও মানচিত্র পাবেন।"},
+            };
+        } else {
+            en = new String[][]{
+                    {"What are your prices?", "Prices vary — tell us what you're interested in and we'll share the details."},
+                    {"Are you open right now?", "Please check our listed hours above, or ask here and we'll confirm right away."},
+                    {"Do you take bookings?", "Yes, message us your preferred date and time and we'll confirm."},
+                    {"Where exactly are you located?", "You can find our exact address and map on this page under Location."},
+            };
+            bn = new String[][]{
+                    {"আপনাদের দাম কত?", "দাম নির্ভর করে সেবা/পণ্যের উপর — কী জানতে চান বললে আমরা বিস্তারিত জানাব।"},
+                    {"আপনারা কি এখন খোলা আছেন?", "উপরে উল্লেখিত সময়সূচী দেখুন, অথবা এখানে জিজ্ঞাসা করুন, আমরা দ্রুত নিশ্চিত করব।"},
+                    {"আপনারা কি বুকিং নেন?", "হ্যাঁ, পছন্দের তারিখ ও সময় জানালে আমরা নিশ্চিত করব।"},
+                    {"আপনারা ঠিক কোথায় অবস্থিত?", "এই পেজে Location অংশে আমাদের সঠিক ঠিকানা ও মানচিত্র পাবেন।"},
+            };
+        }
+        List<BusinessAutoReply> rows = new java.util.ArrayList<>();
+        for (String[] pair : en) {
+            rows.add(BusinessAutoReply.builder().question(pair[0]).answer(pair[1]).language("en").systemDefault(true).build());
+        }
+        for (String[] pair : bn) {
+            rows.add(BusinessAutoReply.builder().question(pair[0]).answer(pair[1]).language("bn").systemDefault(true).build());
+        }
+        return rows;
     }
 
     // ================================================================

@@ -114,6 +114,14 @@ public final class CatalogRequests {
     ) {
     }
 
+    /** Owner-authored quick-reply shortcut — always language = null (shown to everyone),
+     *  whether creating a brand-new one or editing a system default's wording. */
+    public record AutoReplyRequest(
+            @NotBlank @Size(max = 300) String question,
+            @NotBlank String answer
+    ) {
+    }
+
     /** New full order for a module list — every current row id, once each. */
     public record ReorderRequest(@NotEmpty List<UUID> orderedIds) {
     }

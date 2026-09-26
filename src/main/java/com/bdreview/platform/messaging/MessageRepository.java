@@ -26,4 +26,9 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
                           @Param("now") Instant now);
 
     long countByThreadIdAndReadAtIsNullAndSenderUserIdNot(UUID threadId, UUID excludingSender);
+
+    /** Rate-limit scope for the auto-reply trigger — counts owner-authored messages in this
+     *  thread in the recent window, whether human-typed or auto-posted (no separate flag to
+     *  distinguish them; a human owner rarely replies within seconds of an auto-reply anyway). */
+    long countByThreadIdAndSenderUserIdAndCreatedAtAfter(UUID threadId, UUID senderUserId, Instant after);
 }

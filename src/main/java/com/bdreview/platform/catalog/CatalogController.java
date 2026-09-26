@@ -211,4 +211,32 @@ public class CatalogController {
     public List<Faq> reorderFaqs(@PathVariable UUID businessId, @Valid @RequestBody ReorderRequest req) {
         return catalog.reorderFaqs(CurrentUser.id(), businessId, req.orderedIds());
     }
+
+    // ---- Quick-reply auto-answers (chat widget) -----------------------
+
+    @GetMapping("/auto-replies")
+    public List<BusinessAutoReply> autoReplies(@PathVariable UUID businessId) {
+        return catalog.autoReplies(businessId);
+    }
+
+    @PostMapping("/auto-replies")
+    public BusinessAutoReply addAutoReply(@PathVariable UUID businessId, @Valid @RequestBody AutoReplyRequest req) {
+        return catalog.addAutoReply(CurrentUser.id(), businessId, req);
+    }
+
+    @PutMapping("/auto-replies/{id}")
+    public BusinessAutoReply updateAutoReply(@PathVariable UUID businessId, @PathVariable UUID id, @Valid @RequestBody AutoReplyRequest req) {
+        return catalog.updateAutoReply(CurrentUser.id(), businessId, id, req);
+    }
+
+    @DeleteMapping("/auto-replies/{id}")
+    public ResponseEntity<Void> deleteAutoReply(@PathVariable UUID businessId, @PathVariable UUID id) {
+        catalog.deleteAutoReply(CurrentUser.id(), businessId, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/auto-replies/reorder")
+    public List<BusinessAutoReply> reorderAutoReplies(@PathVariable UUID businessId, @Valid @RequestBody ReorderRequest req) {
+        return catalog.reorderAutoReplies(CurrentUser.id(), businessId, req.orderedIds());
+    }
 }

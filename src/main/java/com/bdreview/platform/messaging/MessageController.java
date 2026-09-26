@@ -40,6 +40,19 @@ public class MessageController {
         return ResponseEntity.ok(MessageResponse.from(message, nameOf(message.getSenderUserId())));
     }
 
+    /** Consumer taps a quick-reply chip — posts the business's configured canned answer as if from the owner. */
+    @PostMapping("/threads/{threadId}/auto-reply")
+    public ResponseEntity<MessageResponse> triggerAutoReply(@PathVariable UUID threadId, @Valid @RequestBody AutoReplyTriggerRequest request) {
+        Message message = messageService.triggerAutoReply(CurrentUser.id(), threadId, request.autoReplyId());
+        return ResponseEntity.ok(MessageResponse.from(message, nameOf(message.getSenderUserId())));
+    }
+
+    /** Tap an emoji next to a message — toggles it off if already reacted with the same one. */
+    @PostMapping("/{messageId}/reactions")
+    public ResponseEntity<List<ReactionSummary>> react(@PathVariable UUID messageId, @Valid @RequestBody ReactRequest request) {
+        return ResponseEntity.ok(messageService.react(CurrentUser.id(), messageId, request.emoji()));
+    }
+
     @PostMapping("/threads/{threadId}/read")
     public ResponseEntity<Void> markRead(@PathVariable UUID threadId) {
         messageService.markRead(CurrentUser.id(), threadId);
@@ -50,8 +63,12 @@ public class MessageController {
     public ResponseEntity<PageResponse<MessageResponse>> history(@PathVariable UUID threadId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         Page<Message> messages = messageService.history(threadId, page, size);
+        UUID viewerId = CurrentUser.id();
         Map<UUID, String> names = namesOf(messages.getContent().stream().map(Message::getSenderUserId).toList());
-        return ResponseEntity.ok(PageResponse.of(messages.map(m -> MessageResponse.from(m, names.get(m.getSenderUserId())))));
+        Map<UUID, List<ReactionSummary>> reactions = messageService.reactionSummariesFor(
+                messages.getContent().stream().map(Message::getId).toList(), viewerId);
+        return ResponseEntity.ok(PageResponse.of(messages.map(m ->
+                MessageResponse.from(m, names.get(m.getSenderUserId()), reactions.getOrDefault(m.getId(), List.of())))));
     }
 
     @GetMapping("/threads/mine")

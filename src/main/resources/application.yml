@@ -85,6 +85,10 @@ app:
     # pattern as otp/report above, no framework rate limiter.
     max-posts-per-hour: 20
     max-comments-per-hour: 60
+  messaging:
+    # Caps a customer spamming the chat widget's quick-reply chips in one conversation —
+    # same @Value-injected-threshold pattern as report/community above.
+    max-auto-replies-per-hour: 20
   ml-service:
     # Python FastAPI/LangGraph microservice — see /ml-service in the project root
     base-url: ${ML_SERVICE_BASE_URL:http://localhost:8081}
