@@ -130,6 +130,26 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     long countByBusinessIdAndDeletedAtIsNullAndCreatedAtAfter(UUID businessId, Instant since);
 
     /**
+     * The one review each business shows as a snippet on its search/list card (see
+     * BusinessResponse#topReviewSnippet) — highest rating first, then most useful, then most
+     * recent, across every business in the page at once. Postgres's DISTINCT ON is the native
+     * "top-1-per-group in one query" tool (this codebase already uses native queries for
+     * per-group work — see ratingTrend above); a JPQL window-function equivalent isn't
+     * supported by Hibernate's query translator. Row shape: [UUID businessId, String content].
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (r.business_id) r.business_id, r.content
+            FROM review r
+            WHERE r.business_id IN :businessIds
+              AND r.deleted_at IS NULL
+              AND r.visibility_status = 'RECOMMENDED'
+              AND r.content IS NOT NULL
+              AND length(trim(r.content)) > 0
+            ORDER BY r.business_id, r.rating DESC, r.useful_count DESC, r.created_at DESC
+            """, nativeQuery = true)
+    List<Object[]> topReviewPerBusiness(@Param("businessIds") List<UUID> businessIds);
+
+    /**
      * Community feed trust signal ("N reviews" on a post/comment author) —
      * one grouped query per page rather than a per-author round trip. Row
      * shape: [UUID userId, Long count].

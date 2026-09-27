@@ -1,6 +1,7 @@
 package com.bdreview.platform.business;
 
 import com.bdreview.platform.catalog.CategoryModuleFlags;
+import com.bdreview.platform.offer.ActiveOfferSummary;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -82,7 +83,18 @@ public record BusinessResponse(
          * null-on-list convention as structuredHours. An active exception always
          * takes precedence over the recurring weekly entry for "is it open" purposes.
          */
-        List<HoursExceptionEntry> hoursExceptions
+        List<HoursExceptionEntry> hoursExceptions,
+        /** Populated on every response (detail and list/search alike) — a plain entity column, free to include. */
+        Instant createdAt,
+        /**
+         * A short excerpt of the business's top review — search/list responses only (via the
+         * search()-specific from() overload below, batched across the page); null everywhere
+         * else, including detail (which shows every review itself, so a single excerpt adds
+         * nothing there).
+         */
+        String topReviewSnippet,
+        /** The one active offer to show as a card badge — same search/list-only, batched convention as topReviewSnippet. */
+        ActiveOfferSummary activeOffer
 ) {
     /** photoUrls: cover photo (if any) followed by gallery photos, in display order — card carousel source. */
     public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed) {
@@ -92,6 +104,37 @@ public record BusinessResponse(
     /** Same as the 3-arg overload, plus the brand summary (search/list responses — no detail-only fields). */
     public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed, BrandSummary brand) {
         return from(b, photoUrls, claimed, brand, null, null, null, null, null);
+    }
+
+    /**
+     * The search()-only variant: also carries structured hours/exceptions (for "open now"),
+     * a batched top review snippet, and a batched active-offer summary — see
+     * BusinessService#search, which fetches all three as one query each for the whole result
+     * page, never per row.
+     */
+    public static BusinessResponse from(Business b, List<String> photoUrls, boolean claimed, BrandSummary brand,
+                                        List<OperatingHoursEntry> structuredHours, List<HoursExceptionEntry> hoursExceptions,
+                                        String topReviewSnippet, ActiveOfferSummary activeOffer) {
+        return new BusinessResponse(
+                b.getId(), b.getOwnerUserId(), b.getName(), b.getSlug(),
+                b.getCategory().getName(), b.getCategory().getKind(),
+                b.getCity().getName(), b.getArea().getName(),
+                b.getContactNumber(), b.getOperatingHours(), b.getDescription(), b.getEstablishedYear(), b.getCoverPhotoUrl(),
+                b.getLogoUrl(),
+                b.getWebsiteUrl(), b.getWhatsappNumber(), b.getEmail(), b.getFacebookUrl(), b.getInstagramUrl(),
+                photoUrls,
+                b.getLocation().getY(), b.getLocation().getX(),
+                b.getPriceTier(),
+                b.getAttributes().stream().map(BusinessAttribute::getName).toList(),
+                b.isVerified(), claimed, b.getAverageRating(), b.getReviewCount(),
+                brand != null ? brand.id() : null, brand != null ? brand.name() : null,
+                brand != null ? brand.slug() : null, brand != null ? brand.branchCount() : null,
+                brand != null ? brand.averageRating() : null,
+                b.isFlagged(), b.getFlagReason(), b.getFlaggedAt(),
+                b.getTotalLikeCount(), b.getTotalDislikeCount(), b.getTotalLoveCount(), b.getTotalWowCount(),
+                null, null, null, structuredHours, hoursExceptions,
+                b.getCreatedAt(), topReviewSnippet, activeOffer
+        );
     }
 
     /** Detail-view variant: also carries the category-module presence flags, the updates flag, the FAQ flag, structured hours, and hours exceptions. */
@@ -116,7 +159,8 @@ public record BusinessResponse(
                 brand != null ? brand.averageRating() : null,
                 b.isFlagged(), b.getFlagReason(), b.getFlaggedAt(),
                 b.getTotalLikeCount(), b.getTotalDislikeCount(), b.getTotalLoveCount(), b.getTotalWowCount(),
-                categoryModules, hasUpdates, hasFaq, structuredHours, hoursExceptions
+                categoryModules, hasUpdates, hasFaq, structuredHours, hoursExceptions,
+                b.getCreatedAt(), null, null
         );
     }
 }

@@ -59,6 +59,8 @@ public class BusinessService {
     private final BusinessHoursExceptionRepository businessHoursExceptionRepository;
     private final com.bdreview.platform.catalog.CatalogService catalogService;
     private final com.bdreview.platform.updates.BusinessUpdateService businessUpdateService;
+    private final com.bdreview.platform.review.ReviewService reviewService;
+    private final com.bdreview.platform.offer.OfferService offerService;
     private final BusinessService self;
 
     public BusinessService(BusinessRepository businessRepository,
@@ -77,6 +79,8 @@ public class BusinessService {
                            BusinessHoursExceptionRepository businessHoursExceptionRepository,
                            com.bdreview.platform.catalog.CatalogService catalogService,
                            com.bdreview.platform.updates.BusinessUpdateService businessUpdateService,
+                           com.bdreview.platform.review.ReviewService reviewService,
+                           com.bdreview.platform.offer.OfferService offerService,
                            @Lazy BusinessService self) {
         this.businessRepository = businessRepository;
         this.brandRepository = brandRepository;
@@ -94,6 +98,8 @@ public class BusinessService {
         this.businessHoursExceptionRepository = businessHoursExceptionRepository;
         this.catalogService = catalogService;
         this.businessUpdateService = businessUpdateService;
+        this.reviewService = reviewService;
+        this.offerService = offerService;
         this.self = self;
     }
 
@@ -400,11 +406,24 @@ public class BusinessService {
         Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(results.getContent());
         Map<UUID, Boolean> claimedByOwner = claimedByOwner(results.getContent());
         Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(results.getContent());
+        // Hours (for "open now"), a top review snippet, and the current active offer — each one
+        // batched query for the whole page, same convention as gallery/claimed/brand above, not
+        // a per-row lookup. See BusinessResponse's search()-only from() overload.
+        Map<UUID, List<OperatingHoursEntry>> hoursByBusiness = structuredHoursByBusiness(results.getContent());
+        Map<UUID, List<HoursExceptionEntry>> exceptionsByBusiness = hoursExceptionsByBusiness(results.getContent());
+        List<UUID> businessIds = results.getContent().stream().map(Business::getId).toList();
+        Map<UUID, String> snippetByBusiness = reviewService.topReviewSnippetsByBusiness(businessIds);
+        Map<UUID, com.bdreview.platform.offer.ActiveOfferSummary> offerByBusiness =
+                offerService.activeOfferSummariesByBusiness(businessIds);
         List<BusinessResponse> mapped = results.getContent().stream()
                 .map(b -> BusinessResponse.from(b,
                         photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
                         claimedByOwner.getOrDefault(b.getOwnerUserId(), true),
-                        brandByBusiness.get(b.getId())))
+                        brandByBusiness.get(b.getId()),
+                        hoursByBusiness.getOrDefault(b.getId(), List.of()),
+                        exceptionsByBusiness.getOrDefault(b.getId(), List.of()),
+                        snippetByBusiness.get(b.getId()),
+                        offerByBusiness.get(b.getId())))
                 .toList();
         // Collapse rows sharing a brand into one card ("KFC — 5 branches" instead of N cards).
         // branchCount on the surviving row is still the TRUE total across all live branches (from

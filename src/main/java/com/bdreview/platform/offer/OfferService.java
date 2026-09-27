@@ -22,6 +22,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -221,6 +222,24 @@ public class OfferService {
                 businessId, OfferStatus.ACTIVE, Instant.now());
         Set<UUID> savedOfferIds = savedOfferIds(viewerUserId, offers.stream().map(Offer::getId).toList());
         return offers.stream().map(o -> toResponse(o, business, savedOfferIds.contains(o.getId()))).toList();
+    }
+
+    /**
+     * Batched "one badge-worthy offer per business" lookup for a search/list results page —
+     * see BusinessService#search. One query total, not one per row; businesses with no active
+     * offer are simply absent from the returned map rather than mapped to null.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, ActiveOfferSummary> activeOfferSummariesByBusiness(List<UUID> businessIds) {
+        if (businessIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, ActiveOfferSummary> byBusiness = new HashMap<>();
+        for (Offer offer : offerRepository.findByBusinessIdInAndStatusAndValidUntilAfterOrderByValidUntilAsc(
+                businessIds, OfferStatus.ACTIVE, Instant.now())) {
+            byBusiness.putIfAbsent(offer.getBusinessId(), ActiveOfferSummary.from(offer));
+        }
+        return byBusiness;
     }
 
     /** Owner dashboard — every status, not just active. */

@@ -20,6 +20,17 @@ public interface OfferRepository extends JpaRepository<Offer, UUID> {
     /** Business-profile banner / "does this business currently have an active offer" — small result set, no paging needed. */
     List<Offer> findByBusinessIdAndStatusAndValidUntilAfterOrderByValidUntilAsc(UUID businessId, OfferStatus status, Instant now);
 
+    /**
+     * Batched version of the finder above for a whole search/list page of businesses at once
+     * (see OfferService#activeOfferSummariesByBusiness) — one round trip regardless of how many
+     * businesses are on the page, same convention as BusinessService's galleryUrlsByBusiness/
+     * structuredHoursByBusiness. Ordered soonest-to-expire first per business, same "most urgent
+     * offer wins" tie-break businessOffers() already uses; the service groups this flat list by
+     * businessId and keeps only the first (soonest) row per business.
+     */
+    List<Offer> findByBusinessIdInAndStatusAndValidUntilAfterOrderByValidUntilAsc(
+            List<UUID> businessIds, OfferStatus status, Instant now);
+
     /** Menu-item price overlay — see CatalogService#menu. Filtered further in Java via Offer#isCurrentlyActive, which already lives on the entity. */
     List<Offer> findByBusinessIdAndMenuItemIdIsNotNull(UUID businessId);
 

@@ -23,7 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -311,6 +313,35 @@ public class ReviewService {
 
     public List<ReviewPhoto> photosFor(UUID reviewId) {
         return reviewPhotoRepository.findByReviewId(reviewId);
+    }
+
+    private static final int SNIPPET_MAX_LENGTH = 120;
+
+    /**
+     * Batched "one review snippet per business" lookup for a search/list results page — see
+     * BusinessService#search. One query total; businesses with no eligible review are simply
+     * absent from the returned map rather than mapped to null.
+     */
+    public Map<UUID, String> topReviewSnippetsByBusiness(List<UUID> businessIds) {
+        if (businessIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> byBusiness = new HashMap<>();
+        for (Object[] row : reviewRepository.topReviewPerBusiness(businessIds)) {
+            UUID businessId = (UUID) row[0];
+            String content = ((String) row[1]).trim();
+            byBusiness.put(businessId, truncateSnippet(content));
+        }
+        return byBusiness;
+    }
+
+    private static String truncateSnippet(String content) {
+        if (content.length() <= SNIPPET_MAX_LENGTH) {
+            return content;
+        }
+        // Break on the last space before the limit so the snippet never cuts mid-word.
+        int cut = content.lastIndexOf(' ', SNIPPET_MAX_LENGTH);
+        return content.substring(0, cut > 0 ? cut : SNIPPET_MAX_LENGTH).trim() + "…";
     }
 
     /** Business detail page CTA: null means the user hasn't reviewed this business yet. */
