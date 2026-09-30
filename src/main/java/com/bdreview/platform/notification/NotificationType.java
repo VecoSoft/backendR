@@ -28,5 +28,8 @@ public enum NotificationType {
     OFFER_CLAIMED,
     OFFER_REDEEMED,
     OFFER_APPROVED,
-    OFFER_REJECTED
+    OFFER_REJECTED,
+    // Community moderation (V56) — see community.moderation.CommunityModerationService
+    COMMUNITY_MODERATION,
+    COMMUNITY_RESTRICTION
 }

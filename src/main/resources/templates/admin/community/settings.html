@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community settings - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community settings</h1>
+            <p>Everything here is enforced by the server and applies on the next request — no deploy needed. Every save is audit-logged with a before/after diff.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="post" th:action="@{/admin/community/settings}" th:object="${settings}">
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">General</h2>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" th:field="*{general.communityEnabled}" id="gEnabled"/>
+                        <label class="form-check-label" for="gEnabled">Community on</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" th:field="*{general.readOnly}" id="gReadOnly"/>
+                        <label class="form-check-label" for="gReadOnly">Read-only mode</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" th:field="*{general.guestsCanRead}" id="gGuests"/>
+                        <label class="form-check-label" for="gGuests">Logged-out visitors can read</label>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label small">Maintenance message (shown when the community is off)</label>
+                    <input type="text" class="form-control form-control-sm mb-2" th:field="*{general.maintenanceMessage}" maxlength="300"/>
+                    <label class="form-label small">Read-only message</label>
+                    <input type="text" class="form-control form-control-sm" th:field="*{general.readOnlyMessage}" maxlength="300"/>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Post types &amp; media</h2>
+            <div class="row g-3">
+                <div class="col-md-6 d-flex flex-wrap gap-3">
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{postTypes.discussionEnabled}" id="tDisc"/>
+                        <label class="form-check-label" for="tDisc">Discussion</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{postTypes.questionEnabled}" id="tQ"/>
+                        <label class="form-check-label" for="tQ">Question</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{postTypes.recommendationEnabled}" id="tRev"/>
+                        <label class="form-check-label" for="tRev">Review</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{postTypes.pollEnabled}" id="tPoll"/>
+                        <label class="form-check-label" for="tPoll">Polls</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{postTypes.imagesEnabled}" id="tImg"/>
+                        <label class="form-check-label" for="tImg">Images</label></div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Max images per post</label>
+                    <input type="number" min="0" max="20" class="form-control form-control-sm" th:field="*{postTypes.maxImagesPerPost}"/>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">Max image size (MB)</label>
+                    <input type="number" min="1" max="25" class="form-control form-control-sm" th:field="*{postTypes.maxImageSizeMb}"/>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Areas available in the community</h2>
+            <select name="allowedAreaIds" multiple class="form-select form-select-sm" size="6">
+                <option th:each="a : ${areas}" th:value="${a.id}" th:text="${a.name + ', ' + a.city.name}"
+                        th:selected="${settings.areas.allowedAreaIds.contains(a.id)}">Area</option>
+            </select>
+            <div class="form-text">Nothing selected = every area is available. Ctrl/⌘-click to select several.</div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Content rules</h2>
+            <div class="row g-3">
+                <div class="col-6 col-md-2"><label class="form-label small">Post min</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{content.postBodyMin}"/></div>
+                <div class="col-6 col-md-2"><label class="form-label small">Post max</label>
+                    <input type="number" min="1" class="form-control form-control-sm" th:field="*{content.postBodyMax}"/></div>
+                <div class="col-6 col-md-2"><label class="form-label small">Question title min</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{content.questionTitleMin}"/></div>
+                <div class="col-6 col-md-2"><label class="form-label small">Question title max</label>
+                    <input type="number" min="1" max="150" class="form-control form-control-sm" th:field="*{content.questionTitleMax}"/></div>
+                <div class="col-6 col-md-2"><label class="form-label small">Comment min</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{content.commentMin}"/></div>
+                <div class="col-6 col-md-2"><label class="form-label small">Comment max</label>
+                    <input type="number" min="1" class="form-control form-control-sm" th:field="*{content.commentMax}"/></div>
+                <div class="col-6 col-md-3"><label class="form-label small">Max links per post</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{content.maxLinksPerPost}"/></div>
+                <div class="col-6 col-md-4"><label class="form-label small">Block links for accounts newer than (days, 0 = off)</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{content.blockLinksForAccountsNewerThanDays}"/></div>
+                <div class="col-md-8">
+                    <label class="form-label small">Banned words (one per line or comma-separated; whole-word, Bangla + English)</label>
+                    <textarea name="bannedWordsText" rows="4" class="form-control form-control-sm"
+                              th:text="${@fmt.lines(settings.content.bannedWords)}"></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">When a banned word is found</label>
+                    <select class="form-select form-select-sm" th:field="*{content.bannedWordsMode}">
+                        <option value="FLAG">Hold for review (flag)</option>
+                        <option value="BLOCK">Block the post/comment</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Rate limits</h2>
+            <p class="small text-muted">No trust-level system exists, so a member is <strong>trusted</strong> once their account is at least
+                <em>N</em> days old — or when a moderator used “Approve and trust”.</p>
+            <div class="row g-3">
+                <div class="col-md-3"><label class="form-label small">Trusted after (days)</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.trustedAfterDays}"/></div>
+            </div>
+            <table class="admin-table mt-3">
+                <thead><tr><th></th><th>Posts / day</th><th>Comments / hour</th><th>Votes / minute</th><th>Reports / day</th></tr></thead>
+                <tbody>
+                <tr>
+                    <th>New</th>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.newUsers.postsPerDay}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.newUsers.commentsPerHour}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.newUsers.votesPerMinute}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.newUsers.reportsPerDay}"/></td>
+                </tr>
+                <tr>
+                    <th>Trusted</th>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.trustedUsers.postsPerDay}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.trustedUsers.commentsPerHour}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.trustedUsers.votesPerMinute}"/></td>
+                    <td><input type="number" min="0" class="form-control form-control-sm" th:field="*{rateLimits.trustedUsers.reportsPerDay}"/></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">New members &amp; auto-moderation</h2>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{newUsers.approvalRequired}" id="nApproval"/>
+                        <label class="form-check-label" for="nApproval">First posts need approval</label></div>
+                    <label class="form-label small mt-2">How many posts</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{newUsers.approvalPostCount}"/>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">Auto-hide after reports from N different users (0 = off)</label>
+                    <input type="number" min="0" class="form-control form-control-sm" th:field="*{autoModeration.autoHideReportThreshold}"/>
+                    <label class="form-label small mt-2">Dashboard “heavily downvoted” at ≥ N downvotes</label>
+                    <input type="number" min="1" class="form-control form-control-sm" th:field="*{autoModeration.heavilyDownvotedThreshold}"/>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" th:field="*{autoModeration.autoFlagLinkPostsFromNewAccounts}" id="aLinks"/>
+                        <label class="form-check-label" for="aLinks">Hold posts with links from new (untrusted) accounts</label></div>
+                    <p class="small text-muted mt-2 mb-0">ML spam/gibberish checking isn't offered: the ML service has no endpoint for it
+                        (it only does fake-review analysis and summaries).</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Community rules</h2>
+            <textarea rows="7" class="form-control form-control-sm" th:field="*{rulesMarkdown}" maxlength="10000"></textarea>
+            <div class="form-text">Markdown. Shown in the community sidebar and the post composer.</div>
+            <label class="form-label small mt-3">Moderation reason templates (one per line)</label>
+            <textarea name="reasonTemplatesText" rows="5" class="form-control form-control-sm"
+                      th:text="${@fmt.lines(settings.reasonTemplates)}"></textarea>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Feature flags</h2>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label small">NID verification</label>
+                    <select name="nidMode" class="form-select form-select-sm">
+                        <option value="" th:selected="${settings.features.nidVerificationEnabled == null}"
+                                th:text="'Deployment default (' + (${nidDefault} ? 'on' : 'off') + ')'">Default</option>
+                        <option value="on" th:selected="${settings.features.nidVerificationEnabled == true}">On</option>
+                        <option value="off" th:selected="${settings.features.nidVerificationEnabled == false}">Off</option>
+                    </select>
+                </div>
+                <div class="col-md-7 small">
+                    Currently <span class="badge" th:classappend="${nidEffective} ? 'text-bg-success' : 'text-bg-secondary'"
+                                    th:text="${nidEffective} ? 'ON' : 'OFF'">OFF</span>.
+                    While off, NID endpoints answer 404 “Feature disabled”, NID uploads are refused, stored NID images aren't served,
+                    and no flow asks for NID. Stored NID data is kept.
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card d-flex flex-wrap gap-2 align-items-center">
+            <input type="text" name="changeReason" class="form-control form-control-sm" style="max-width:420px;" placeholder="Why are you changing this? (optional, goes to the audit log)"/>
+            <button class="btn btn-primary"><i class="bi bi-save"></i> Save settings</button>
+        </div>
+    </form>
+
+    <div class="admin-card" id="topics">
+        <h2 class="h6 fw-bold mb-3">Topics</h2>
+        <table class="admin-table">
+            <thead><tr><th>Order</th><th>Code</th><th>Label</th><th>বাংলা</th><th>Icon</th><th>Color</th><th>Enabled</th><th>Default</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="t, it : ${allTopics}">
+                <td class="text-nowrap">
+                    <form method="post" th:action="@{/admin/community/topics/{c}/move(c=${t.code})}" class="d-inline">
+                        <input type="hidden" name="delta" value="-1"/>
+                        <button class="btn btn-sm btn-link p-0" th:disabled="${it.first}" aria-label="Move up"><i class="bi bi-arrow-up"></i></button>
+                    </form>
+                    <form method="post" th:action="@{/admin/community/topics/{c}/move(c=${t.code})}" class="d-inline">
+                        <input type="hidden" name="delta" value="1"/>
+                        <button class="btn btn-sm btn-link p-0" th:disabled="${it.last}" aria-label="Move down"><i class="bi bi-arrow-down"></i></button>
+                    </form>
+                </td>
+                <td class="text-mono" th:text="${t.code}">CODE</td>
+                <td colspan="7">
+                    <form method="post" th:action="@{/admin/community/topics/{c}(c=${t.code})}" class="d-flex flex-wrap gap-1 align-items-center">
+                        <input type="text" name="label" th:value="${t.label}" class="form-control form-control-sm" style="width:130px;" required/>
+                        <input type="text" name="labelBn" th:value="${t.labelBn}" class="form-control form-control-sm" style="width:110px;"/>
+                        <input type="text" name="icon" th:value="${t.icon}" class="form-control form-control-sm" style="width:120px;" placeholder="lucide icon"/>
+                        <input type="color" name="color" th:value="${t.color != null ? t.color : '#6b7280'}" class="form-control form-control-color form-control-sm"/>
+                        <div class="form-check ms-2"><input class="form-check-input" type="checkbox" name="enabled" value="true" th:checked="${t.enabled}"/></div>
+                        <div class="form-check ms-3"><input class="form-check-input" type="radio" name="defaultTopic" value="true" th:checked="${t.defaultTopic}"/></div>
+                        <button class="btn btn-sm btn-outline-primary ms-2">Save</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <form method="post" th:action="@{/admin/community/topics}" class="d-flex flex-wrap gap-2 mt-3 align-items-end">
+            <div><label class="form-label small">New topic code</label>
+                <input type="text" name="code" class="form-control form-control-sm" placeholder="e.g. PETS" pattern="[A-Za-z][A-Za-z0-9_]{1,19}" required/></div>
+            <div><label class="form-label small">Label</label><input type="text" name="label" class="form-control form-control-sm" required/></div>
+            <div><label class="form-label small">বাংলা label</label><input type="text" name="labelBn" class="form-control form-control-sm"/></div>
+            <div><label class="form-label small">Icon</label><input type="text" name="icon" class="form-control form-control-sm" placeholder="paw-print"/></div>
+            <div><label class="form-label small">Color</label><input type="color" name="color" value="#0ea5e9" class="form-control form-control-color form-control-sm"/></div>
+            <button class="btn btn-sm btn-success"><i class="bi bi-plus"></i> Add topic</button>
+        </form>
+        <p class="form-text mb-0">Disabling a topic hides it from the composer and filters; existing posts keep their badge. Topics are never deleted.</p>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

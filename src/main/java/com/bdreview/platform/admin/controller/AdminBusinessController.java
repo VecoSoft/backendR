@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.admin.form.BusinessForm;
 import com.bdreview.platform.admin.service.AdminBusinessService;
 import com.bdreview.platform.admin.support.AdminSupport;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import java.util.UUID;
 
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/admin/businesses")
 public class AdminBusinessController {
 

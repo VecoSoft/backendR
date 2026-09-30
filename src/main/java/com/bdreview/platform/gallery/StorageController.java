@@ -1,7 +1,9 @@
 package com.bdreview.platform.gallery;
 
 import com.bdreview.platform.common.BadRequestException;
+import com.bdreview.platform.common.FeatureDisabledException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.community.settings.FeatureFlagService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.FileSystemResource;
@@ -27,14 +29,20 @@ import java.nio.file.Path;
 public class StorageController {
 
     private final Path root;
+    private final FeatureFlagService featureFlags;
 
-    public StorageController(@Value("${app.storage.local-dir}") String localDir) {
+    public StorageController(@Value("${app.storage.local-dir}") String localDir, FeatureFlagService featureFlags) {
         this.root = Path.of(localDir).toAbsolutePath().normalize();
+        this.featureFlags = featureFlags;
     }
 
     @PutMapping("/upload/{*key}")
     public ResponseEntity<Void> upload(@PathVariable String key, jakarta.servlet.http.HttpServletRequest request)
             throws IOException {
+        // NID verification is feature-flagged (off by default): no NID files are accepted while it's off.
+        if (isNidKey(key) && !featureFlags.nidVerificationEnabled()) {
+            throw new FeatureDisabledException();
+        }
         Path target = resolve(key);
         Files.createDirectories(target.getParent());
         try (InputStream in = request.getInputStream()) {
@@ -45,6 +53,10 @@ public class StorageController {
 
     @GetMapping("/files/{*key}")
     public ResponseEntity<Resource> get(@PathVariable String key) throws IOException {
+        // Reads under nid/ are ADMIN-only at the security layer; while the feature is off they 404 for everyone.
+        if (isNidKey(key) && !featureFlags.nidVerificationEnabled()) {
+            throw new FeatureDisabledException();
+        }
         Path file = resolve(key);
         if (!Files.isRegularFile(file)) {
             throw new ResourceNotFoundException("File not found");
@@ -53,6 +65,12 @@ public class StorageController {
         return ResponseEntity.ok()
                 .contentType(contentType != null ? MediaType.parseMediaType(contentType) : MediaType.APPLICATION_OCTET_STREAM)
                 .body(new FileSystemResource(file));
+    }
+
+    /** Stored NID images live under "nid/" (from the pre-V13 NID flow — kept, never deleted). */
+    private static boolean isNidKey(String key) {
+        String cleaned = key.startsWith("/") ? key.substring(1) : key;
+        return cleaned.toLowerCase(java.util.Locale.ROOT).startsWith("nid/");
     }
 
     private Path resolve(String key) {

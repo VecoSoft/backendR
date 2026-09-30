@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.admin.support.AdminSupport;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.business.BusinessRepository;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/admin/reports")
 public class AdminReportController {
 

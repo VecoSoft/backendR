@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.admin.form.ReferenceItemForm;
 import com.bdreview.platform.business.*;
 import com.bdreview.platform.common.ResourceNotFoundException;
@@ -15,6 +16,7 @@ import java.util.UUID;
 
 /** Categories, cities, areas, business attributes, and brands are small lookup tables — one page, five tabs. */
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/admin/reference-data")
 public class AdminReferenceDataController {
 

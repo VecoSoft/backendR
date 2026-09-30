@@ -10,6 +10,10 @@ import com.bdreview.platform.community.CommunityPost;
 import com.bdreview.platform.community.CommunityPostComment;
 import com.bdreview.platform.community.CommunityPostCommentRepository;
 import com.bdreview.platform.community.CommunityPostRepository;
+import com.bdreview.platform.auth.User;
+import com.bdreview.platform.auth.UserRepository;
+import com.bdreview.platform.community.moderation.CommunityModerationService;
+import com.bdreview.platform.community.moderation.CommunityPolicyService;
 import com.bdreview.platform.moderation.AuditLogService;
 import com.bdreview.platform.moderation.ModerationService;
 import com.bdreview.platform.notification.NotificationChannel;
@@ -20,6 +24,7 @@ import com.bdreview.platform.offer.OfferRepository;
 import com.bdreview.platform.review.Review;
 import com.bdreview.platform.review.ReviewRepository;
 import com.bdreview.platform.review.VisibilityStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
@@ -30,6 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -97,8 +103,34 @@ public class ReportService {
         this.self = self;
     }
 
+    private static final Set<ReportTargetType> COMMUNITY_TARGETS = Set.of(
+            ReportTargetType.COMMUNITY_POST, ReportTargetType.COMMUNITY_COMMENT, ReportTargetType.COMMUNITY_PROFILE);
+
+    // Community moderation hooks (V56) — setter-injected so the constructor (and its unit tests)
+    // stay unchanged; null outside a full Spring context.
+    private CommunityModerationService communityModerationService;
+    private CommunityPolicyService communityPolicyService;
+    private UserRepository userRepository;
+
+    @Autowired(required = false)
+    void setCommunityHooks(@Lazy CommunityModerationService communityModerationService,
+                           CommunityPolicyService communityPolicyService,
+                           UserRepository userRepository) {
+        this.communityModerationService = communityModerationService;
+        this.communityPolicyService = communityPolicyService;
+        this.userRepository = userRepository;
+    }
+
     @Transactional
     public Report create(UUID reporterUserId, CreateReportRequest request) {
+        boolean communityTarget = COMMUNITY_TARGETS.contains(request.targetType());
+        if (communityTarget && communityPolicyService != null) {
+            // Muted/suspended/banned members can't report either; community "reports per day" tier limit.
+            User reporter = userRepository.findById(reporterUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+            communityPolicyService.assertCanWrite(reporter, CommunityPolicyService.Action.REPORT);
+            requireCommunityTargetExists(request.targetType(), request.targetId());
+        }
         long recent = reportRepository.countByReporterUserIdAndCreatedAtAfter(
                 reporterUserId, Instant.now().minus(1, ChronoUnit.HOURS));
         if (recent >= maxReportsPerHour) {
@@ -128,8 +160,30 @@ public class ReportService {
                 .priority(determinePriority(request))
                 .build());
 
+        if (communityTarget && communityModerationService != null) {
+            communityModerationService.onCommunityReportFiled(request.targetType(), request.targetId());
+        }
+
         self.dispatchSubmissionNotification(report.getId(), report.getReporterUserId(), report.getReferenceCode());
         return report;
+    }
+
+    private static String removalReason(Report report, String resolutionNote) {
+        return resolutionNote != null && !resolutionNote.isBlank()
+                ? resolutionNote.trim()
+                : "Reported for " + report.getReason().label();
+    }
+
+    private void requireCommunityTargetExists(ReportTargetType type, UUID id) {
+        boolean exists = switch (type) {
+            case COMMUNITY_POST -> communityPostRepository.findByIdAndDeletedAtIsNull(id).isPresent();
+            case COMMUNITY_COMMENT -> communityPostCommentRepository.findByIdAndDeletedAtIsNull(id).isPresent();
+            case COMMUNITY_PROFILE -> userRepository.findByCommunityProfileId(id).isPresent();
+            default -> true;
+        };
+        if (!exists) {
+            throw new ResourceNotFoundException("The content you're reporting could not be found");
+        }
     }
 
     /**
@@ -211,24 +265,32 @@ public class ReportService {
                     yield owner;
                 }
                 case COMMUNITY_POST -> {
-                    // Same soft-delete an author's own "delete post" already performs.
+                    // V56: a restorable moderator removal (status REMOVED, audit-logged, author
+                    // notified by the moderation service) instead of the old hard-to-undo soft delete.
                     UUID owner = communityPostRepository.findByIdAndDeletedAtIsNull(report.getTargetId())
                             .map(CommunityPost::getAuthorUserId)
                             .orElse(null);
+                    if (communityModerationService != null && owner != null) {
+                        communityModerationService.removePost(report.getTargetId(), removalReason(report, resolutionNote));
+                        yield null;
+                    }
                     communityPostRepository.softDelete(report.getTargetId(), now);
                     yield owner;
                 }
                 case COMMUNITY_COMMENT -> {
-                    // Same soft-delete an author's own "delete comment" already performs,
-                    // including the parent post's comment_count adjustment.
                     CommunityPostComment comment = communityPostCommentRepository
                             .findByIdAndDeletedAtIsNull(report.getTargetId()).orElse(null);
+                    if (comment != null && communityModerationService != null) {
+                        communityModerationService.removeComment(comment.getId(), removalReason(report, resolutionNote));
+                        yield null;
+                    }
                     if (comment != null) {
                         communityPostCommentRepository.softDelete(comment.getId(), now);
                         communityPostRepository.adjustCommentCount(comment.getPostId(), -1);
                     }
                     yield comment == null ? null : comment.getAuthorUserId();
                 }
+                case COMMUNITY_PROFILE -> null; // handled from the Community → Reports queue
                 case OFFER -> {
                     // Same status transition the owner's own "cancel offer" action performs.
                     Offer offer = offerRepository.findById(report.getTargetId()).orElse(null);
@@ -244,6 +306,8 @@ public class ReportService {
 
         report.setStatus(outcome);
         report.setResolutionNote(resolutionNote);
+        report.setResolvedBy(adminId);
+        report.setResolvedAt(now);
         report.setReporterNotifiedAt(now);
         if (targetOwnerId != null) {
             report.setTargetOwnerNotifiedAt(now);

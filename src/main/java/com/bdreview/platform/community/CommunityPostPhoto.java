@@ -30,6 +30,16 @@ public class CommunityPostPhoto {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Moderator removed just this one image (V56) — the row stays so it can be restored. */
+    @Column(name = "removed_by")
+    private UUID removedBy;
+
+    @Column(name = "removed_reason", columnDefinition = "text")
+    private String removedReason;
+
+    @Column(name = "removed_at")
+    private Instant removedAt;
+
     @PrePersist
     void onCreate() {
         this.createdAt = Instant.now();

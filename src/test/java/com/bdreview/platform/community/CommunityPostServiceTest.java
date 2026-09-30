@@ -9,6 +9,13 @@ import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.RateLimitExceededException;
+import com.bdreview.platform.community.moderation.CommunityPolicyService;
+import com.bdreview.platform.community.moderation.CommunityRestrictionRepository;
+import com.bdreview.platform.community.settings.CommunityConfig;
+import com.bdreview.platform.community.settings.CommunitySettings;
+import com.bdreview.platform.community.settings.CommunitySettingsService;
+import com.bdreview.platform.community.settings.TopicView;
+import com.bdreview.platform.report.ReportRepository;
 import com.bdreview.platform.gallery.ObjectStorageClient;
 import com.bdreview.platform.review.ReviewRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,17 +63,29 @@ class CommunityPostServiceTest {
     @Mock ObjectStorageClient objectStorageClient;
     @Mock CommunityNotifier communityNotifier;
 
+    @Mock CommunitySettingsService settingsService;
+    @Mock CommunityRestrictionRepository restrictionRepository;
+    @Mock ReportRepository reportRepository;
+
     CommunityPostService service;
+    CommunityPolicyService policy;
     UUID userId;
 
     @BeforeEach
     void setUp() {
+        // Real policy over mocked storage: default community settings + two enabled topics.
+        lenient().when(settingsService.config()).thenReturn(new CommunityConfig(new CommunitySettings(), List.of(
+                new TopicView("FOOD", "Food", null, null, null, 1, true, false),
+                new TopicView("GENERAL", "General", null, null, null, 2, true, true))));
+        policy = new CommunityPolicyService(settingsService, restrictionRepository, postRepository, commentRepository, reportRepository);
         service = new CommunityPostService(postRepository, voteRepository, commentVoteRepository, commentRepository,
                 mentionRepository, businessMentionRepository, photoRepository, followRepository, questionFollowRepository,
                 questionPassRepository, pollRepository, pollOptionRepository,
                 pollVoteRepository, userRepository, businessRepository,
-                areaRepository, reviewRepository, objectStorageClient, communityNotifier, 20, 60);
+                areaRepository, reviewRepository, objectStorageClient, communityNotifier, policy);
         userId = UUID.randomUUID();
+        // Every write now resolves the acting user first (restriction + rate-limit checks).
+        lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(pseudonymousUser(userId)));
         // lenient: not every test's response-assembly path touches both of these
         lenient().when(mentionRepository.findByPostId(any())).thenReturn(List.of());
         lenient().when(reviewRepository.countGroupedByUserId(any())).thenReturn(List.of());
@@ -79,7 +98,7 @@ class CommunityPostServiceTest {
     private CreateCommunityPostRequest textPostRequest() {
         return new CreateCommunityPostRequest(
                 "Best burger under 500tk?", "Looking for recommendations in Dhanmondi.",
-                CommunityPostType.QUESTION, CommunityTopic.FOOD, null, null, null, null, null);
+                CommunityPostType.QUESTION, "FOOD", null, null, null, null, null);
     }
 
     @Test
@@ -99,7 +118,7 @@ class CommunityPostServiceTest {
         assertThat(response.imageUrls()).isEmpty(); // no imageUrls were sent on this request
         assertThat(response.author().communityUsername()).isEqualTo("UrbanExplorer42");
         assertThat(response.postType()).isEqualTo(CommunityPostType.QUESTION);
-        assertThat(response.topic()).isEqualTo(CommunityTopic.FOOD);
+        assertThat(response.topic()).isEqualTo("FOOD");
     }
 
     @Test
@@ -116,7 +135,7 @@ class CommunityPostServiceTest {
                 "https://cdn.example.com/community-post/abc/1.jpg",
                 "https://cdn.example.com/community-post/abc/2.jpg");
         CreateCommunityPostRequest request = new CreateCommunityPostRequest(
-                null, "Look at this place!", CommunityPostType.DISCUSSION, CommunityTopic.GENERAL,
+                null, "Look at this place!", CommunityPostType.DISCUSSION, "GENERAL",
                 null, null, null, null, urls);
 
         service.createPost(userId, request);
@@ -134,7 +153,7 @@ class CommunityPostServiceTest {
         List<String> elevenUrls = java.util.stream.IntStream.range(0, 11)
                 .mapToObj(i -> "https://cdn.example.com/community-post/abc/" + i + ".jpg").toList();
         CreateCommunityPostRequest request = new CreateCommunityPostRequest(
-                null, "Too many photos", CommunityPostType.DISCUSSION, CommunityTopic.GENERAL,
+                null, "Too many photos", CommunityPostType.DISCUSSION, "GENERAL",
                 null, null, null, null, elevenUrls);
 
         assertThatThrownBy(() -> service.createPost(userId, request))
@@ -183,7 +202,7 @@ class CommunityPostServiceTest {
         });
         CreateCommunityPostRequest noTitle = new CreateCommunityPostRequest(
                 "          ", "Just a quick update, no title needed.",
-                CommunityPostType.DISCUSSION, CommunityTopic.GENERAL, null, null, null, null, null);
+                CommunityPostType.DISCUSSION, "GENERAL", null, null, null, null, null);
 
         CommunityPostResponse response = service.createPost(userId, noTitle);
 
@@ -220,7 +239,7 @@ class CommunityPostServiceTest {
 
         CreateCommunityPostRequest request = new CreateCommunityPostRequest(
                 "Had a great experience here", "Food and service were both excellent.",
-                CommunityPostType.RECOMMENDATION, CommunityTopic.FOOD, businessId, null, null, null, null);
+                CommunityPostType.RECOMMENDATION, "FOOD", businessId, null, null, null, null);
         service.createPost(userId, request);
 
         assertThat(captor.getValue().getAreaId()).isEqualTo(areaId);
@@ -238,7 +257,7 @@ class CommunityPostServiceTest {
         when(businessRepository.findById(businessId)).thenReturn(Optional.of(deleted));
 
         CreateCommunityPostRequest request = new CreateCommunityPostRequest(
-                "Title long enough", null, CommunityPostType.DISCUSSION, CommunityTopic.GENERAL, businessId, null, null, null, null);
+                "Title long enough", null, CommunityPostType.DISCUSSION, "GENERAL", businessId, null, null, null, null);
 
         assertThatThrownBy(() -> service.createPost(userId, request))
                 .isInstanceOf(BadRequestException.class);
@@ -250,7 +269,7 @@ class CommunityPostServiceTest {
         // and most posts have no areaId — buildPageResponse must guard that lookup.
         CommunityPost post = CommunityPost.builder().id(UUID.randomUUID()).authorUserId(userId)
                 .title("No area here").areaId(null).build();
-        when(postRepository.findAllByFiltersOrderByCreatedAtDesc(any(), any(), any()))
+        when(postRepository.findLiveByFiltersOrderByCreatedAtDesc(any(), any(), any(), any()))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(post)));
         when(userRepository.findAllById(any())).thenReturn(List.of(pseudonymousUser(userId)));
 
@@ -378,7 +397,7 @@ class CommunityPostServiceTest {
 
     private CreateCommunityPostRequest pollRequest(List<String> options, Integer durationHours) {
         return new CreateCommunityPostRequest(null, "Which is the best biryani spot?",
-                CommunityPostType.POLL, CommunityTopic.FOOD, null, null, options, durationHours, null);
+                CommunityPostType.POLL, "FOOD", null, null, options, durationHours, null);
     }
 
     @Test
@@ -726,6 +745,7 @@ class CommunityPostServiceTest {
         when(followRepository.findByFollowerUserIdAndFollowedUserIdIn(eq(viewerId), any()))
                 .thenReturn(List.of(CommunityFollow.builder().followerUserId(viewerId).followedUserId(followedA).build()));
 
+        when(userRepository.findByCommunityProfileId(userId)).thenReturn(Optional.of(pseudonymousUser(userId)));
         var response = service.following(userId, 0, 20, viewerId);
 
         assertThat(response.content()).hasSize(2);
@@ -746,6 +766,7 @@ class CommunityPostServiceTest {
                 CommunityFollow.builder().followerUserId(followerA).followedUserId(userId).build())));
         when(userRepository.findAllById(any())).thenReturn(List.of(User.builder().id(followerA).communityUsername("Carol").build()));
 
+        when(userRepository.findByCommunityProfileId(userId)).thenReturn(Optional.of(pseudonymousUser(userId)));
         var response = service.followers(userId, 0, 20, null);
 
         assertThat(response.content()).hasSize(1);

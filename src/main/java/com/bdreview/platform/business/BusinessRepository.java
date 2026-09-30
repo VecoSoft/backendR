@@ -284,6 +284,16 @@ public interface BusinessRepository extends JpaRepository<Business, UUID> {
             """)
     List<Business> findAllByIdInWithCategory(@Param("ids") Collection<UUID> ids);
 
+    /** Smart search's second step (ranked ids → cards): category/city/area fetched up front, no per-row lazy loads. */
+    @Query("""
+            SELECT b FROM Business b
+            JOIN FETCH b.category
+            JOIN FETCH b.city
+            JOIN FETCH b.area
+            WHERE b.id IN :ids AND b.deletedAt IS NULL
+            """)
+    List<Business> findAllByIdInWithPlace(@Param("ids") Collection<UUID> ids);
+
     // -----------------------------------------------------------------
     // Admin panel (com.bdreview.platform.admin) — listing/search across
     // ALL businesses (including soft-deleted, so admins can restore them),

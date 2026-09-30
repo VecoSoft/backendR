@@ -37,6 +37,24 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage(), req);
     }
 
+    /** Community switched off by an admin — 503 carrying the admin's maintenance message. */
+    @ExceptionHandler(com.bdreview.platform.community.moderation.CommunityUnavailableException.class)
+    public ResponseEntity<ApiError> handleCommunityUnavailable(RuntimeException ex, HttpServletRequest req) {
+        return build(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), req);
+    }
+
+    /** @PreAuthorize denials — without this the generic handler below would turn them into a 500. */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(Exception ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN, "Access denied", req);
+    }
+
+    /** Disabled features (e.g. NID verification while its flag is off) answer 404 "Feature disabled". */
+    @ExceptionHandler(FeatureDisabledException.class)
+    public ResponseEntity<ApiError> handleFeatureDisabled(FeatureDisabledException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ApiError> handleRateLimit(RateLimitExceededException ex, HttpServletRequest req) {
         return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), req);

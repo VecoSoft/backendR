@@ -1,5 +1,6 @@
 package com.bdreview.platform.offer;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.PageResponse;
 import jakarta.validation.Valid;
@@ -21,9 +22,11 @@ import java.util.UUID;
 public class OfferController {
 
     private final OfferService offerService;
+    private final com.bdreview.platform.promo.PromoEventService promoEvents;
 
-    public OfferController(OfferService offerService) {
+    public OfferController(OfferService offerService, com.bdreview.platform.promo.PromoEventService promoEvents) {
         this.offerService = offerService;
+        this.promoEvents = promoEvents;
     }
 
     // -----------------------------------------------------------------
@@ -95,8 +98,15 @@ public class OfferController {
     // -----------------------------------------------------------------
 
     @PostMapping("/{offerId}/claim")
-    public ResponseEntity<OfferClaimResponse> claim(@PathVariable UUID offerId) {
-        return ResponseEntity.ok(offerService.claimOffer(CurrentUser.id(), offerId));
+    public ResponseEntity<OfferClaimResponse> claim(@PathVariable UUID offerId,
+                                                    // V58 promo attribution — set when the claim came from a business post / share link
+                                                    @RequestParam(required = false) UUID promoPostId,
+                                                    @RequestParam(required = false) UUID promoBoostId,
+                                                    @RequestParam(required = false) String promoRef) {
+        OfferClaimResponse claim = offerService.claimOffer(CurrentUser.id(), offerId);
+        promoEvents.recordOfferClaim(new com.bdreview.platform.promo.PromoEventService.Attribution(promoPostId, promoBoostId, promoRef),
+                claim.id(), offerId);
+        return ResponseEntity.ok(claim);
     }
 
     @PostMapping("/redeem")
@@ -132,22 +142,26 @@ public class OfferController {
     // Admin moderation
     // -----------------------------------------------------------------
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/queue")
     public ResponseEntity<PageResponse<OfferResponse>> adminQueue(
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(offerService.adminQueue(page, size));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/{offerId}/approve")
     public ResponseEntity<OfferResponse> adminApprove(@PathVariable UUID offerId) {
         return ResponseEntity.ok(offerService.adminApprove(offerId));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/{offerId}/reject")
     public ResponseEntity<OfferResponse> adminReject(@PathVariable UUID offerId, @RequestBody RejectOfferRequest request) {
         return ResponseEntity.ok(offerService.adminReject(offerId, request));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/admin/{offerId}/remove")
     public ResponseEntity<Void> adminRemove(@PathVariable UUID offerId) {
         offerService.adminRemove(offerId);

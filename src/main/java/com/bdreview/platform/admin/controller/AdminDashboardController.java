@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.moderation.AuditLogRepository;
@@ -12,6 +13,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminDashboardController {
 
     private final ModerationService moderationService;

@@ -54,6 +54,13 @@ public class Report {
     @Column(name = "target_owner_notified_at")
     private Instant targetOwnerNotifiedAt;
 
+    /** V56: who resolved/dismissed it and when (ADMIN or MODERATOR). */
+    @Column(name = "resolved_by")
+    private UUID resolvedBy;
+
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)

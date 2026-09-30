@@ -31,7 +31,7 @@ public class CommunityPostController {
 
     @PostMapping("/posts/upload-url")
     public ResponseEntity<PreSignedUploadResponse> requestUploadUrl(@RequestParam String filename) {
-        return ResponseEntity.ok(communityPostService.requestImageUploadUrl(filename));
+        return ResponseEntity.ok(communityPostService.requestImageUploadUrl(CurrentUser.id(), filename));
     }
 
     @PostMapping("/posts")
@@ -42,13 +42,23 @@ public class CommunityPostController {
     @GetMapping("/posts")
     public ResponseEntity<PageResponse<CommunityPostResponse>> feed(
             @RequestParam(required = false) CommunityFeedTab tab,
-            @RequestParam(required = false) CommunityTopic topic,
+            @RequestParam(required = false) String topic,
             @RequestParam(required = false) CommunityPostType postType,
             @RequestParam(required = false, defaultValue = "NEW") CommunitySortOrder sort,
             @RequestParam(required = false) UUID areaId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(communityPostService.feed(tab, topic, postType, sort, areaId, page, size, CurrentUser.idOrNull()));
+            @RequestParam(defaultValue = "20") int size,
+            // V58 sponsored-slot targeting — only ever what the viewer chose to share: a selected
+            // area (viewerAreaId, separate from the Nearby tab filter) or a consented location.
+            @RequestParam(required = false) UUID viewerAreaId,
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng,
+            @RequestHeader(value = "X-Promo-Session", required = false) String promoSession) {
+        boolean validCoords = lat != null && lng != null && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        var viewer = new BusinessPostSupport.FeedViewer(CurrentUser.idOrNull(),
+                viewerAreaId != null ? viewerAreaId : areaId,
+                validCoords ? lat : null, validCoords ? lng : null, promoSession);
+        return ResponseEntity.ok(communityPostService.feedForViewer(tab, topic, postType, sort, areaId, page, size, viewer));
     }
 
     @GetMapping("/posts/{postId}")

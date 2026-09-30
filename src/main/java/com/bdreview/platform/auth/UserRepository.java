@@ -57,4 +57,14 @@ public interface UserRepository extends JpaRepository<User, UUID> {
               AND (:role IS NULL OR u.role = :role)
             """)
     Page<User> search(@Param("query") String query, @Param("role") UserRole role, Pageable pageable);
+
+    // -----------------------------------------------------------------
+    // Community staff (V56 staff_role) — see admin.config.AdminAuthenticationProvider.
+    // -----------------------------------------------------------------
+    List<User> findAllByPhoneNumberAndStaffRole(String phoneNumber, String staffRole);
+
+    List<User> findAllByStaffRoleOrderByNameAsc(String staffRole);
+
+    /** Role-assignment page only: every account (consumer/owner) behind one phone number. */
+    List<User> findAllByPhoneNumberAndRoleNot(String phoneNumber, UserRole role);
 }

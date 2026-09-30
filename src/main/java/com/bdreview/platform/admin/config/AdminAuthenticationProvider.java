@@ -52,15 +52,20 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
             throw new BadCredentialsException("Invalid phone number or password");
         }
 
-        User user = userRepository.findByPhoneNumberAndRole(phone, UserRole.ADMIN).orElse(null);
-        if (user == null
-                || user.getPasswordHash() == null
-                || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
-            throw new BadCredentialsException("Invalid phone number or password");
+        User admin = userRepository.findByPhoneNumberAndRole(phone, UserRole.ADMIN).orElse(null);
+        if (admin != null && admin.getPasswordHash() != null && passwordEncoder.matches(rawPassword, admin.getPasswordHash())) {
+            List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+            return new UsernamePasswordAuthenticationToken(admin.getId().toString(), null, authorities);
         }
 
-        List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
-        return new UsernamePasswordAuthenticationToken(user.getId().toString(), null, authorities);
+        // V56: community moderators sign in with their own (consumer/business) account password.
+        for (User moderator : userRepository.findAllByPhoneNumberAndStaffRole(phone, User.STAFF_MODERATOR)) {
+            if (moderator.getPasswordHash() != null && passwordEncoder.matches(rawPassword, moderator.getPasswordHash())) {
+                List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_MODERATOR"));
+                return new UsernamePasswordAuthenticationToken(moderator.getId().toString(), null, authorities);
+            }
+        }
+        throw new BadCredentialsException("Invalid phone number or password");
     }
 
     @Override

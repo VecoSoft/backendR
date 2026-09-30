@@ -3,6 +3,7 @@ package com.bdreview.platform.community;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface CommunityPostRepository extends JpaRepository<CommunityPost, UUID> {
+public interface CommunityPostRepository extends JpaRepository<CommunityPost, UUID>, JpaSpecificationExecutor<CommunityPost> {
 
     Optional<CommunityPost> findByIdAndDeletedAtIsNull(UUID id);
 
@@ -23,52 +24,123 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     // mega-query with `:param IS NULL OR ...` branches) so CommunityPostService
     // picks the right one per (tab, topic, sort); avoids binding a possibly-
     // null collection to an IN clause, which Hibernate handles poorly.
+    //
+    // "Live" (V56) = not author-deleted, moderation status ACTIVE, and inside
+    // its scheduled window (only announcements set visibleFrom/visibleUntil).
+    // Pinned posts lead: GLOBAL pins everywhere, TOPIC pins when that topic
+    // is the active filter, AREA pins in that area's Nearby feed. An official
+    // announcement targeted at one topic/area only shows up there.
     // -----------------------------------------------------------------
 
     /**
      * Plain/topic/postType feed, New or Top sort. topic and postType are both optional scalar
-     * filters (unlike the Following-tab author-id list below, a nullable enum bound with
+     * filters (unlike the Following-tab author-id list below, a nullable scalar bound with
      * `:param IS NULL OR ...` is not the Hibernate IN-clause pitfall the class comment above
-     * warns about — that only applies to a nullable *collection*) — one unified method per
-     * sort order rather than a 4-way (topic present/absent x postType present/absent) matrix.
+     * warns about — that only applies to a nullable *collection*).
      */
     @Query("""
             SELECT p FROM CommunityPost p
             WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
+              AND (p.visibleFrom IS NULL OR p.visibleFrom <= :now)
+              AND (p.visibleUntil IS NULL OR p.visibleUntil > :now)
               AND (:topic IS NULL OR p.topic = :topic)
               AND (:postType IS NULL OR p.postType = :postType)
-            ORDER BY p.createdAt DESC
+              AND (p.official = false OR p.pinScope IS NULL OR p.pinScope = 'GLOBAL'
+                   OR (p.pinScope = 'TOPIC' AND p.topic = :topic))
+            ORDER BY CASE WHEN p.pinned = true AND (p.pinnedUntil IS NULL OR p.pinnedUntil > :now)
+                               AND (p.pinScope = 'GLOBAL' OR (p.pinScope = 'TOPIC' AND p.topic = :topic))
+                          THEN 0 ELSE 1 END,
+                     p.createdAt DESC
             """)
-    Page<CommunityPost> findAllByFiltersOrderByCreatedAtDesc(
-            @Param("topic") CommunityTopic topic, @Param("postType") CommunityPostType postType, Pageable pageable);
+    Page<CommunityPost> findLiveByFiltersOrderByCreatedAtDesc(
+            @Param("topic") String topic, @Param("postType") CommunityPostType postType,
+            @Param("now") Instant now, Pageable pageable);
 
     @Query("""
             SELECT p FROM CommunityPost p
             WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
+              AND (p.visibleFrom IS NULL OR p.visibleFrom <= :now)
+              AND (p.visibleUntil IS NULL OR p.visibleUntil > :now)
               AND (:topic IS NULL OR p.topic = :topic)
               AND (:postType IS NULL OR p.postType = :postType)
-            ORDER BY (p.upvoteCount - p.downvoteCount) DESC, p.createdAt DESC
+              AND (p.official = false OR p.pinScope IS NULL OR p.pinScope = 'GLOBAL'
+                   OR (p.pinScope = 'TOPIC' AND p.topic = :topic))
+            ORDER BY CASE WHEN p.pinned = true AND (p.pinnedUntil IS NULL OR p.pinnedUntil > :now)
+                               AND (p.pinScope = 'GLOBAL' OR (p.pinScope = 'TOPIC' AND p.topic = :topic))
+                          THEN 0 ELSE 1 END,
+                     (p.upvoteCount - p.downvoteCount) DESC, p.createdAt DESC
             """)
-    Page<CommunityPost> findAllByFiltersOrderByScoreDesc(
-            @Param("topic") CommunityTopic topic, @Param("postType") CommunityPostType postType, Pageable pageable);
+    Page<CommunityPost> findLiveByFiltersOrderByScoreDesc(
+            @Param("topic") String topic, @Param("postType") CommunityPostType postType,
+            @Param("now") Instant now, Pageable pageable);
 
-    /** "Nearby" tab — NEW-sort only in V1 (score-sort x area is a rare-enough combo to skip for now). */
-    Page<CommunityPost> findAllByAreaIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID areaId, Pageable pageable);
+    /** "Nearby" tab — NEW-sort only in V1; area pins (incl. area-targeted announcements) lead. */
+    @Query("""
+            SELECT p FROM CommunityPost p
+            WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
+              AND (p.visibleFrom IS NULL OR p.visibleFrom <= :now)
+              AND (p.visibleUntil IS NULL OR p.visibleUntil > :now)
+              AND p.areaId = :areaId
+            ORDER BY CASE WHEN p.pinned = true AND (p.pinnedUntil IS NULL OR p.pinnedUntil > :now)
+                               AND p.pinScope IN ('GLOBAL', 'AREA')
+                          THEN 0 ELSE 1 END,
+                     p.createdAt DESC
+            """)
+    Page<CommunityPost> findLiveByArea(@Param("areaId") UUID areaId, @Param("now") Instant now, Pageable pageable);
 
     /** "Following" tab — NEW-sort only in V1, same reasoning as Nearby. */
-    Page<CommunityPost> findAllByAuthorUserIdInAndDeletedAtIsNullOrderByCreatedAtDesc(Collection<UUID> authorUserIds, Pageable pageable);
+    @Query("""
+            SELECT p FROM CommunityPost p
+            WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
+              AND (p.visibleFrom IS NULL OR p.visibleFrom <= :now)
+              AND (p.visibleUntil IS NULL OR p.visibleUntil > :now)
+              AND p.authorUserId IN :authorUserIds
+              AND p.authorBusinessId IS NULL
+            ORDER BY p.createdAt DESC
+            """)
+    Page<CommunityPost> findLiveByAuthors(@Param("authorUserIds") Collection<UUID> authorUserIds,
+                                          @Param("now") Instant now, Pageable pageable);
 
+    /** V58: a member profile's own posts — never the posts that member published as a business. */
+    @Query("""
+            SELECT p FROM CommunityPost p
+            WHERE p.authorUserId = :authorUserId AND p.deletedAt IS NULL AND p.authorBusinessId IS NULL
+            ORDER BY p.createdAt DESC
+            """)
+    Page<CommunityPost> findMemberPostsByAuthor(@Param("authorUserId") UUID authorUserId, Pageable pageable);
+
+    @Query("""
+            SELECT p FROM CommunityPost p
+            WHERE p.authorUserId = :authorUserId AND p.deletedAt IS NULL AND p.authorBusinessId IS NULL
+              AND p.status = :status
+            ORDER BY p.createdAt DESC
+            """)
+    Page<CommunityPost> findMemberPostsByAuthorAndStatus(@Param("authorUserId") UUID authorUserId,
+                                                        @Param("status") CommunityContentStatus status, Pageable pageable);
+
+    /** A profile owner viewing their own profile — every non-deleted post, whatever its moderation state. */
     Page<CommunityPost> findAllByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID authorUserId, Pageable pageable);
 
-    long countByAuthorUserIdAndDeletedAtIsNull(UUID authorUserId);
+    Page<CommunityPost> findAllByAuthorUserIdAndStatusAndDeletedAtIsNullOrderByCreatedAtDesc(
+            UUID authorUserId, CommunityContentStatus status, Pageable pageable);
 
-    /** Rate limiting — see CommunityPostService#createPost, same @Value-injected-threshold pattern as OtpService/ReportService. */
+    long countByAuthorUserIdAndStatusAndDeletedAtIsNull(UUID authorUserId, CommunityContentStatus status);
+
+    /** New-user approval rule — how many of this author's posts have ever gone live (see CommunityPolicyService#checkPost). */
+    long countByAuthorUserIdAndStatus(UUID authorUserId, CommunityContentStatus status);
+
+    /** Rate limiting — see CommunityPolicyService (posts per day). */
     long countByAuthorUserIdAndCreatedAtAfter(UUID authorUserId, Instant since);
 
     /** Feed filtered to posts mentioning a given business (business profile's "community mentions" tab). */
     @Query("""
             SELECT p FROM CommunityPost p
             WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
               AND p.id IN (SELECT m.postId FROM CommunityPostMention m WHERE m.businessId = :businessId)
             ORDER BY p.createdAt DESC
             """)
@@ -80,7 +152,7 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
 
     /** Topic affinity signal: which topics has this user actually posted in. Empty for a brand-new user. */
     @Query("SELECT DISTINCT p.topic FROM CommunityPost p WHERE p.authorUserId = :userId AND p.deletedAt IS NULL")
-    List<CommunityTopic> findDistinctTopicsByAuthor(@Param("userId") UUID userId);
+    List<String> findDistinctTopicsByAuthor(@Param("userId") UUID userId);
 
     /**
      * Open questions this viewer hasn't asked, already followed/passed, or already answered —
@@ -91,6 +163,7 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     @Query("""
             SELECT p FROM CommunityPost p
             WHERE p.deletedAt IS NULL
+              AND p.status = com.bdreview.platform.community.CommunityContentStatus.ACTIVE
               AND p.postType = :postType
               AND p.closedAt IS NULL
               AND p.authorUserId <> :viewerId
@@ -102,8 +175,21 @@ public interface CommunityPostRepository extends JpaRepository<CommunityPost, UU
     List<CommunityPost> findRecommendedQuestions(
             @Param("postType") CommunityPostType postType,
             @Param("viewerId") UUID viewerId,
-            @Param("affinityTopics") Collection<CommunityTopic> affinityTopics,
+            @Param("affinityTopics") Collection<String> affinityTopics,
             Pageable pageable);
+
+    // -----------------------------------------------------------------
+    // Moderation (V56)
+    // -----------------------------------------------------------------
+
+    List<CommunityPost> findAllByAuthorUserIdAndDeletedAtIsNull(UUID authorUserId);
+
+    long countByStatusAndDeletedAtIsNull(CommunityContentStatus status);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE CommunityPost p SET p.reportCount = p.reportCount + 1 WHERE p.id = :id")
+    void incrementReportCount(@Param("id") UUID id);
 
     // -----------------------------------------------------------------
     // Atomic counter updates — never read-modify-write against the

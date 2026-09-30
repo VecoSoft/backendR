@@ -80,11 +80,9 @@ app:
     # new reports jump to HIGH priority so admins see multi-reporter targets first — the
     # outcome itself still always requires an admin's manual decision.
     high-priority-report-count-threshold: 3
-  community:
-    # "Join Community" V1 spam protection — same @Value-injected-threshold
-    # pattern as otp/report above, no framework rate limiter.
-    max-posts-per-hour: 20
-    max-comments-per-hour: 60
+  # Community limits (posts/day, comments/hour, votes/minute, reports/day for NEW vs TRUSTED
+  # members, content rules, topics, ...) live in the community_settings table since V56 and are
+  # edited from the admin panel (Community → Settings) — nothing community-specific is configured here.
   messaging:
     # Caps a customer spamming the chat widget's quick-reply chips in one conversation —
     # same @Value-injected-threshold pattern as report/community above.
@@ -101,3 +99,12 @@ app:
     default-phone: ${ADMIN_DEFAULT_PHONE:01700000000}
     default-password: ${ADMIN_DEFAULT_PASSWORD:12345678}
     default-name: ${ADMIN_DEFAULT_NAME:Platform Admin}
+
+# --- Runtime feature flags ---
+# Deployment defaults; an ADMIN can override each one at runtime from the admin panel
+# (Community -> Settings -> Feature flags), stored in community_settings.
+features:
+  nid-verification:
+    # NID (national ID) verification. OFF: NID endpoints/uploads answer 404 "Feature disabled",
+    # stored NID files are not served, and no flow requires NID.
+    enabled: ${FEATURE_NID_VERIFICATION_ENABLED:false}

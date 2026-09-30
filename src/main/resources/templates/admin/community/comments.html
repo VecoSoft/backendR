@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community comments - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community comments</h1>
+            <p>Removed comments stay in their thread as “[Removed by moderators]” and can be restored.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+    <datalist th:replace="~{admin/community/parts :: reason-datalist}"></datalist>
+
+    <form method="get" th:action="@{/admin/community/comments}" class="admin-card">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Search</label>
+                <input type="text" name="q" class="form-control form-control-sm" th:value="${f.q}" placeholder="Text or comment id"/>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Post id</label>
+                <input type="text" name="postId" class="form-control form-control-sm" th:value="${f.postId}"/>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Username</label>
+                <input type="text" name="username" class="form-control form-control-sm" th:value="${f.username}" placeholder="u/name"/>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="s : ${ {'ACTIVE','HIDDEN','REMOVED','PENDING'} }" th:value="${s}" th:text="${s}" th:selected="${f.status == s}">S</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="reported" value="true" id="cReported" th:checked="${f.reported}"/>
+                    <label class="form-check-label small" for="cReported">Reported</label></div>
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+                <a th:href="@{/admin/community/comments}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Comment</th><th>Author</th><th>Status</th><th class="text-end">Reports</th><th>Created</th><th class="text-end">Actions</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="c : ${results.content}">
+                <td style="max-width:380px;">
+                    <div class="small" style="white-space:pre-wrap;" th:text="${c.content.length() > 220 ? c.content.substring(0, 220) + '…' : c.content}">text</div>
+                    <a class="small" th:href="@{/admin/community/posts/{id}(id=${c.postId})}">Open post</a>
+                    <div th:if="${c.removedReason != null}" class="small text-danger" th:text="'Removed: ' + ${c.removedReason}">reason</div>
+                </td>
+                <td><a th:href="@{/admin/community/users/{id}(id=${c.authorUserId})}"
+                       th:text="${users[c.authorUserId] != null && users[c.authorUserId].communityUsername != null ? 'u/' + users[c.authorUserId].communityUsername : '[no username]'}">u/x</a></td>
+                <td><span th:replace="~{admin/community/parts :: status(${c.status.name()})}"></span></td>
+                <td class="text-end text-mono" th:classappend="${c.reportCount > 0} ? 'text-danger fw-bold'" th:text="${c.reportCount}">0</td>
+                <td class="small text-mono" th:text="${@fmt.dt(c.createdAt)}">-</td>
+                <td class="text-end">
+                    <form th:if="${c.status.name() != 'REMOVED'}" method="post" class="d-flex gap-1 justify-content-end"
+                          th:action="@{/admin/community/comments/{id}/action(id=${c.id})}">
+                        <input type="hidden" name="action" value="remove"/>
+                        <input type="hidden" name="back" th:value="${currentUrl}"/>
+                        <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm" placeholder="Reason" required style="width:170px;"/>
+                        <button class="btn btn-sm btn-outline-danger">Remove</button>
+                    </form>
+                    <form th:unless="${c.status.name() == 'ACTIVE'}" method="post" class="mt-1"
+                          th:action="@{/admin/community/comments/{id}/action(id=${c.id})}">
+                        <input type="hidden" name="action" value="restore"/>
+                        <input type="hidden" name="back" th:value="${currentUrl}"/>
+                        <button class="btn btn-sm btn-outline-success">Restore</button>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="6" class="admin-table-empty">No comments match.</td></tr>
+            </tbody>
+        </table>
+        <div th:replace="~{admin/community/parts :: pager(${results})}"></div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

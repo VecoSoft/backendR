@@ -18,8 +18,18 @@ import java.util.UUID;
  * <p>{@code communityAvatarUrl} (V53) is a genuinely separate, optional avatar the user can
  * upload just for this pseudonymous identity — never {@code User.profilePhotoUrl}, and never
  * derived from it. Null falls back to initials on the client.
+ *
+ * <p>{@code official} (V56) marks the "Jachai Team" identity used for admin announcements — the
+ * client shows the official badge and doesn't link it to a community profile.
  */
 public record CommunityAuthorSummary(
         UUID id, String communityUsername,
-        long reviewCount, Instant memberSince, boolean verified, String communityAvatarUrl) {
+        long reviewCount, Instant memberSince, boolean verified, String communityAvatarUrl,
+        boolean official) {
+
+    public static final String OFFICIAL_NAME = "Jachai Team";
+
+    public static CommunityAuthorSummary jachaiTeam() {
+        return new CommunityAuthorSummary(new UUID(0L, 0L), OFFICIAL_NAME, 0, null, true, null, true);
+    }
 }

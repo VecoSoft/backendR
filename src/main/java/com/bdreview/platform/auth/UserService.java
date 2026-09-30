@@ -3,7 +3,10 @@ package com.bdreview.platform.auth;
 import com.bdreview.platform.accountlink.AccountLinkService;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.community.moderation.CommunityPolicyService;
 import com.bdreview.platform.gallery.ObjectStorageClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import com.bdreview.platform.gallery.PreSignedUploadResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -63,8 +66,20 @@ public class UserService {
                 objectStorageClient.presignPutUrl(key), key, objectStorageClient.cdnUrlFor(key));
     }
 
+    /** Null in plain unit tests; always present in the running app. */
+    private CommunityPolicyService communityPolicy;
+
+    @Autowired(required = false)
+    void setCommunityPolicy(@Lazy CommunityPolicyService communityPolicy) {
+        this.communityPolicy = communityPolicy;
+    }
+
     @Transactional
     public UserProfileDto updateCommunityAvatar(UUID userId, String communityAvatarUrl) {
+        if (communityPolicy != null) {
+            // A muted/suspended/banned member can't change their public community identity.
+            communityPolicy.assertNotRestricted(userId, CommunityPolicyService.Action.PROFILE);
+        }
         User user = getOrThrow(userId);
         user.setCommunityAvatarUrl(communityAvatarUrl);
         return toDto(userRepository.save(user));

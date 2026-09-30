@@ -4,6 +4,9 @@ import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.community.moderation.CommunityPolicyService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,9 +38,16 @@ public class CommunityUsernameService {
 
     private final UserRepository userRepository;
     private final SecureRandom random = new SecureRandom();
+    /** Null in plain unit tests; always present in the running app. */
+    private CommunityPolicyService policy;
 
     public CommunityUsernameService(UserRepository userRepository) {
         this.userRepository = userRepository;
+    }
+
+    @Autowired(required = false)
+    void setPolicy(@Lazy CommunityPolicyService policy) {
+        this.policy = policy;
     }
 
     public boolean isAvailable(String candidate) {
@@ -77,6 +87,9 @@ public class CommunityUsernameService {
         }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (policy != null && user.getCommunityUsername() != null) {
+            policy.assertNotRestricted(userId, CommunityPolicyService.Action.PROFILE);
+        }
         if (candidate.equalsIgnoreCase(user.getCommunityUsername())) {
             return user.getCommunityUsername(); // no-op: re-submitting your own current username
         }

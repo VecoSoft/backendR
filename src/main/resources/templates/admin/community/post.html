@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community post - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/community/posts}" class="small text-decoration-none">← All posts</a>
+            <h1 th:text="${@fmt.snippet(post.title, post.body, 90)}">Post</h1>
+            <p>
+                <span th:replace="~{admin/community/parts :: status(${post.status.name()})}"></span>
+                <span th:if="${post.holdReason != null}" class="badge text-bg-light border" th:text="'held: ' + ${post.holdReason}">held</span>
+                <span th:if="${post.deletedAt != null}" class="badge text-bg-secondary">Deleted by author</span>
+                <span th:if="${post.locked}" class="badge text-bg-secondary"><i class="bi bi-lock"></i> Locked</span>
+                <span th:if="${post.pinned}" class="badge text-bg-info"><i class="bi bi-pin-angle"></i> Pinned
+                    (<span th:text="${post.pinScope}">GLOBAL</span><span th:if="${post.pinnedUntil != null}" th:text="' until ' + ${@fmt.dt(post.pinnedUntil)}"></span>)</span>
+                <span th:if="${post.featured}" class="badge text-bg-warning"><i class="bi bi-star-fill"></i> Featured</span>
+                <span th:if="${post.official}" class="badge text-bg-primary"><i class="bi bi-patch-check-fill"></i> Jachai Team</span>
+                <span class="text-muted small ms-2 text-mono" th:text="${post.id}">id</span>
+            </p>
+        </div>
+        <a class="btn btn-sm btn-outline-secondary" th:href="${frontendUrl + '/community/' + post.id}" target="_blank" rel="noopener">
+            <i class="bi bi-box-arrow-up-right"></i> View on site</a>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+    <datalist th:replace="~{admin/community/parts :: reason-datalist}"></datalist>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
+            <div class="admin-card">
+                <div class="small text-muted mb-2">
+                    <span th:text="${post.postType.name() == 'RECOMMENDATION' ? 'REVIEW' : post.postType}">TYPE</span> ·
+                    <span th:text="${post.topic}">TOPIC</span> ·
+                    <span th:text="${@fmt.dt(post.createdAt)}">date</span> ·
+                    ▲ <span th:text="${post.upvoteCount}">0</span> ▼ <span th:text="${post.downvoteCount}">0</span> ·
+                    <span th:text="${post.commentCount}">0</span> comments ·
+                    <span th:text="${post.reportCount}">0</span> reports
+                </div>
+                <h2 class="h5" th:if="${post.title != null}" th:text="${post.title}">Title</h2>
+                <div style="white-space:pre-wrap;" th:text="${post.body}">Body</div>
+                <div th:if="${post.removedReason != null}" class="alert alert-danger mt-3 mb-0 small">
+                    Removed <span th:text="${@fmt.dt(post.removedAt)}"></span> — <span th:text="${post.removedReason}"></span>
+                </div>
+
+                <div class="d-flex flex-wrap gap-3 mt-3" th:if="${!photos.isEmpty()}">
+                    <div th:each="ph : ${photos}" class="border rounded p-2" style="width:180px;">
+                        <img th:src="${ph.url}" alt="" style="width:100%; height:120px; object-fit:cover;"
+                             th:style="${ph.removedAt != null} ? 'width:100%;height:120px;object-fit:cover;opacity:.3' : 'width:100%;height:120px;object-fit:cover'"/>
+                        <form th:if="${ph.removedAt == null}" method="post" th:action="@{/admin/community/images/{id}/remove(id=${ph.id})}" class="mt-2">
+                            <input type="hidden" name="postId" th:value="${post.id}"/>
+                            <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm mb-1" placeholder="Reason" required/>
+                            <button class="btn btn-sm btn-outline-danger w-100">Remove image</button>
+                        </form>
+                        <form th:if="${ph.removedAt != null}" method="post" th:action="@{/admin/community/images/{id}/restore(id=${ph.id})}" class="mt-2">
+                            <input type="hidden" name="postId" th:value="${post.id}"/>
+                            <div class="small text-danger mb-1" th:text="'Removed: ' + ${ph.removedReason}">removed</div>
+                            <button class="btn btn-sm btn-outline-success w-100">Restore image</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-3">Comments (<span th:text="${comments.size()}">0</span>)</h2>
+                <div th:each="c : ${comments}" class="border-bottom py-2" th:style="'margin-left:' + ${c.depth * 18} + 'px'">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div class="small">
+                            <a th:href="@{/admin/community/users/{id}(id=${c.authorUserId})}"
+                               th:text="${users[c.authorUserId] != null && users[c.authorUserId].communityUsername != null ? 'u/' + users[c.authorUserId].communityUsername : '[no username]'}">u/x</a>
+                            <span class="text-muted" th:text="${@fmt.dt(c.createdAt)}">date</span>
+                            <span th:replace="~{admin/community/parts :: status(${c.status.name()})}"></span>
+                            <span th:if="${c.reportCount > 0}" class="badge text-bg-danger" th:text="${c.reportCount} + ' reports'">reports</span>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <form th:if="${c.status.name() != 'REMOVED'}" method="post" class="d-flex gap-1"
+                                  th:action="@{/admin/community/comments/{id}/action(id=${c.id})}">
+                                <input type="hidden" name="action" value="remove"/>
+                                <input type="hidden" name="back" th:value="${currentUrl}"/>
+                                <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm" placeholder="Reason" required style="width:160px;"/>
+                                <button class="btn btn-sm btn-outline-danger">Remove</button>
+                            </form>
+                            <form th:if="${c.status.name() == 'REMOVED' || c.status.name() == 'HIDDEN' || c.status.name() == 'PENDING'}" method="post"
+                                  th:action="@{/admin/community/comments/{id}/action(id=${c.id})}">
+                                <input type="hidden" name="action" value="restore"/>
+                                <input type="hidden" name="back" th:value="${currentUrl}"/>
+                                <button class="btn btn-sm btn-outline-success">Restore</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="small mt-1" style="white-space:pre-wrap;" th:text="${c.content}">comment</div>
+                    <div th:if="${c.removedReason != null}" class="small text-danger" th:text="'Removed: ' + ${c.removedReason}">reason</div>
+                </div>
+                <p th:if="${comments.isEmpty()}" class="text-muted small mb-0">No comments.</p>
+
+                <form th:if="${!comments.isEmpty()}" method="post" class="row g-2 mt-3 align-items-end"
+                      th:action="@{/admin/community/posts/{id}/comments/remove-by-user(id=${post.id})}">
+                    <div class="col-md-4">
+                        <label class="form-label small">Remove all comments on this post by</label>
+                        <select name="userId" class="form-select form-select-sm" required>
+                            <option th:each="uid : ${commenterIds}" th:if="${users[uid] != null}"
+                                    th:value="${uid}" th:text="${'u/' + users[uid].communityUsername}">u/x</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm" placeholder="Reason" required/>
+                    </div>
+                    <div class="col-md-3"><button class="btn btn-sm btn-outline-danger w-100">Remove all</button></div>
+                </form>
+            </div>
+
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-3">Report history</h2>
+                <table class="admin-table">
+                    <thead><tr><th>Ref</th><th>Reason</th><th>Status</th><th>Filed</th><th>Resolved</th></tr></thead>
+                    <tbody>
+                    <tr th:each="r : ${reports}">
+                        <td class="text-mono" th:text="${r.referenceCode}">R-1</td>
+                        <td th:text="${r.reason}">SPAM</td>
+                        <td><span class="badge text-bg-secondary" th:text="${r.status}">PENDING</span></td>
+                        <td class="small" th:text="${@fmt.dt(r.createdAt)}">-</td>
+                        <td class="small" th:text="${@fmt.dt(r.resolvedAt)}">-</td>
+                    </tr>
+                    <tr th:if="${reports.isEmpty()}"><td colspan="5" class="admin-table-empty">No reports.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-3">Audit history</h2>
+                <table class="admin-table">
+                    <thead><tr><th>When</th><th>Role</th><th>Action</th><th>Reason</th></tr></thead>
+                    <tbody>
+                    <tr th:each="a : ${audit}">
+                        <td class="small" th:text="${@fmt.dt(a.createdAt)}">-</td>
+                        <td th:text="${a.actorRole} ?: '—'">ADMIN</td>
+                        <td><span class="badge text-bg-secondary" th:text="${a.action}">ACTION</span></td>
+                        <td class="small" th:text="${a.reason ?: a.notes} ?: '—'">reason</td>
+                    </tr>
+                    <tr th:if="${audit.isEmpty()}"><td colspan="4" class="admin-table-empty">No moderation actions yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-2">Author</h2>
+                <div th:if="${post.official}" class="mb-2"><span class="badge text-bg-primary">Posted as Jachai Team</span></div>
+                <div class="fw-semibold"><a th:href="@{/admin/community/users/{id}(id=${author.userId})}"
+                                            th:text="${author.username != null ? 'u/' + author.username : '[no username]'}">u/x</a></div>
+                <ul class="list-unstyled small mb-0 mt-2">
+                    <li>Account age: <strong th:text="${@fmt.age(author.accountCreatedAt)}">3d</strong></li>
+                    <li>Karma: <strong th:text="${author.karma}">0</strong> · Posts <span th:text="${author.posts}">0</span> · Comments <span th:text="${author.comments}">0</span></li>
+                    <li>Reports received: <strong th:text="${author.reportsReceived}">0</strong></li>
+                    <li>Past removals: <strong th:text="${authorRemovals}">0</strong></li>
+                    <li>Status: <span class="badge" th:classappend="${author.status == 'ACTIVE'} ? 'text-bg-success' : 'text-bg-danger'" th:text="${author.status}">ACTIVE</span>
+                        <span th:if="${author.trusted}" class="badge text-bg-info">Trusted</span></li>
+                    <li th:if="${!authorRestrictions.isEmpty()}" class="mt-2">Restrictions:
+                        <ul class="mb-0">
+                            <li th:each="r : ${authorRestrictions}" th:text="${r.type} + ' · ' + ${r.status} + ' · ' + ${@fmt.dt(r.createdAt)}">MUTE</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-3">Moderate</h2>
+
+                <form method="post" th:action="@{/admin/community/posts/{id}/action(id=${post.id})}" class="mb-3">
+                    <label class="form-label small">Reason</label>
+                    <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm mb-2" placeholder="Required for hide / remove / reject"/>
+                    <div class="d-flex flex-wrap gap-1">
+                        <button th:if="${post.status.name() == 'PENDING' || post.status.name() == 'HIDDEN'}" name="action" value="approve" class="btn btn-sm btn-success">Approve</button>
+                        <button th:if="${post.status.name() == 'PENDING' || post.status.name() == 'HIDDEN'}" name="action" value="approve-trust" class="btn btn-sm btn-outline-success">Approve + trust user</button>
+                        <button th:if="${post.status.name() == 'PENDING'}" name="action" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
+                        <button th:if="${post.status.name() == 'ACTIVE'}" name="action" value="hide" class="btn btn-sm btn-outline-dark">Hide</button>
+                        <button th:if="${post.status.name() != 'REMOVED'}" name="action" value="remove" class="btn btn-sm btn-danger">Remove</button>
+                        <button th:if="${post.status.name() == 'REMOVED' || post.status.name() == 'HIDDEN'}" name="action" value="restore" class="btn btn-sm btn-outline-success">Restore</button>
+                        <button th:unless="${post.locked}" name="action" value="lock" class="btn btn-sm btn-outline-secondary"><i class="bi bi-lock"></i> Lock</button>
+                        <button th:if="${post.locked}" name="action" value="unlock" class="btn btn-sm btn-outline-secondary"><i class="bi bi-unlock"></i> Unlock</button>
+                        <button th:unless="${post.featured}" name="action" value="feature" class="btn btn-sm btn-outline-warning">Feature</button>
+                        <button th:if="${post.featured}" name="action" value="unfeature" class="btn btn-sm btn-outline-warning">Unfeature</button>
+                        <button th:if="${post.pinned}" name="action" value="unpin" class="btn btn-sm btn-outline-info">Unpin</button>
+                    </div>
+                </form>
+
+                <form method="post" th:action="@{/admin/community/posts/{id}/action(id=${post.id})}" class="border-top pt-3 mb-3">
+                    <input type="hidden" name="action" value="pin"/>
+                    <label class="form-label small">Pin</label>
+                    <div class="d-flex gap-1 mb-1">
+                        <select name="scope" class="form-select form-select-sm">
+                            <option value="GLOBAL">Everywhere</option>
+                            <option value="TOPIC">In its topic</option>
+                            <option value="AREA" th:disabled="${post.areaId == null}">In its area</option>
+                        </select>
+                        <input type="datetime-local" name="until" class="form-control form-control-sm" title="Optional expiry"/>
+                    </div>
+                    <button class="btn btn-sm btn-outline-info w-100"><i class="bi bi-pin-angle"></i> Pin post</button>
+                </form>
+
+                <form method="post" th:action="@{/admin/community/posts/{id}/action(id=${post.id})}" class="border-top pt-3 mb-3">
+                    <input type="hidden" name="action" value="topic"/>
+                    <label class="form-label small">Change topic</label>
+                    <div class="d-flex gap-1">
+                        <select name="topic" class="form-select form-select-sm">
+                            <option th:each="t : ${topics}" th:value="${t.code}" th:text="${t.label}" th:selected="${t.code == post.topic}">T</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-secondary">Save</button>
+                    </div>
+                </form>
+
+                <form th:if="${post.postType.name() != 'POLL'}" method="post" th:action="@{/admin/community/posts/{id}/action(id=${post.id})}" class="border-top pt-3">
+                    <input type="hidden" name="action" value="type"/>
+                    <label class="form-label small">Change post type</label>
+                    <div class="d-flex gap-1">
+                        <select name="postType" class="form-select form-select-sm">
+                            <option th:each="t : ${postTypes}" th:value="${t}" th:text="${t.name() == 'RECOMMENDATION' ? 'REVIEW' : t}"
+                                    th:selected="${t == post.postType}">T</option>
+                        </select>
+                        <button class="btn btn-sm btn-outline-secondary">Save</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="admin-card border-danger" th:if="${isAdminUser}">
+                <h2 class="h6 fw-bold text-danger mb-2">Permanent delete (admin)</h2>
+                <p class="small text-muted">Deletes the post, its comments, votes, poll and images for good. Prefer “Remove”.</p>
+                <form method="post" th:action="@{/admin/community/posts/{id}/hard-delete(id=${post.id})}"
+                      onsubmit="return confirm('Permanently delete this post? This cannot be undone.');">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Reason" required/>
+                    <input type="text" name="confirm" class="form-control form-control-sm mb-2" placeholder="Type DELETE to confirm" required/>
+                    <button class="btn btn-sm btn-danger w-100">Delete permanently</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

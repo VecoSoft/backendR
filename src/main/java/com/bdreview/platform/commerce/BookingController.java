@@ -25,17 +25,27 @@ public class BookingController {
 
     private final BookingService bookings;
     private final AvailabilityService availability;
+    private final com.bdreview.platform.promo.PromoEventService promoEvents;
 
-    public BookingController(BookingService bookings, AvailabilityService availability) {
+    public BookingController(BookingService bookings, AvailabilityService availability,
+                             com.bdreview.platform.promo.PromoEventService promoEvents) {
         this.bookings = bookings;
         this.availability = availability;
+        this.promoEvents = promoEvents;
     }
 
     // ---- customer ----------------------------------------------------
 
     @PostMapping("/businesses/{businessId}/bookings")
-    public BookingResponse place(@PathVariable UUID businessId, @Valid @RequestBody PlaceBookingRequest req) {
-        return bookings.placeBooking(CurrentUser.id(), businessId, req);
+    public BookingResponse place(@PathVariable UUID businessId, @Valid @RequestBody PlaceBookingRequest req,
+                                 // V58 promo attribution — set when the booking came from a business post / share link
+                                 @RequestParam(required = false) UUID promoPostId,
+                                 @RequestParam(required = false) UUID promoBoostId,
+                                 @RequestParam(required = false) String promoRef) {
+        BookingResponse booking = bookings.placeBooking(CurrentUser.id(), businessId, req);
+        promoEvents.recordConversion(new com.bdreview.platform.promo.PromoEventService.Attribution(promoPostId, promoBoostId, promoRef),
+                com.bdreview.platform.promo.PromoEnums.PromoEventType.BOOKING, booking.id(), businessId);
+        return booking;
     }
 
     /** Public — the real slot engine (Stage 1). {@code staffId} omitted means "any available staff". Advisory only: the backend re-checks at placement. */

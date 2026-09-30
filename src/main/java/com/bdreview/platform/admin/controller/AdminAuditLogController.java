@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.admin.support.AdminSupport;
 import com.bdreview.platform.moderation.AuditLogRepository;
 import org.springframework.data.domain.PageRequest;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping("/admin/audit-log")
 public class AdminAuditLogController {
 

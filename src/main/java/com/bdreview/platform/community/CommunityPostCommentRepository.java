@@ -3,6 +3,7 @@ package com.bdreview.platform.community;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,12 +15,55 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface CommunityPostCommentRepository extends JpaRepository<CommunityPostComment, UUID> {
+public interface CommunityPostCommentRepository extends JpaRepository<CommunityPostComment, UUID>,
+        JpaSpecificationExecutor<CommunityPostComment> {
 
     Page<CommunityPostComment> findByPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(UUID postId, Pageable pageable);
 
-    /** Community profile page's "Comments" tab. */
+    /**
+     * A post's thread as a viewer sees it (V56): live comments and removed placeholders for
+     * everyone, plus the viewer's own held (PENDING/HIDDEN) comments. Pass a nil UUID for anonymous.
+     */
+    @Query("""
+            SELECT c FROM CommunityPostComment c
+            WHERE c.postId = :postId AND c.deletedAt IS NULL
+              AND (c.status IN :statuses OR c.authorUserId = :viewerId)
+            ORDER BY c.createdAt ASC
+            """)
+    Page<CommunityPostComment> findThread(@Param("postId") UUID postId,
+                                          @Param("statuses") Collection<CommunityContentStatus> statuses,
+                                          @Param("viewerId") UUID viewerId, Pageable pageable);
+
+    /** Community profile page's "Comments" tab — the profile owner's own view. */
     Page<CommunityPostComment> findByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID authorUserId, Pageable pageable);
+
+    /** Community profile page's "Comments" tab — everyone else's view. */
+    Page<CommunityPostComment> findByAuthorUserIdAndStatusAndDeletedAtIsNullOrderByCreatedAtDesc(
+            UUID authorUserId, CommunityContentStatus status, Pageable pageable);
+
+    /** V58: profile "Comments" tab variants that leave out replies made as a business. */
+    Page<CommunityPostComment> findByAuthorUserIdAndAuthorBusinessIdIsNullAndDeletedAtIsNullOrderByCreatedAtDesc(
+            UUID authorUserId, Pageable pageable);
+
+    Page<CommunityPostComment> findByAuthorUserIdAndAuthorBusinessIdIsNullAndStatusAndDeletedAtIsNullOrderByCreatedAtDesc(
+            UUID authorUserId, CommunityContentStatus status, Pageable pageable);
+
+    long countByAuthorUserIdAndStatusAndDeletedAtIsNull(UUID authorUserId, CommunityContentStatus status);
+
+    // ---- Moderation (V56) ----
+
+    List<CommunityPostComment> findAllByPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(UUID postId);
+
+    List<CommunityPostComment> findAllByAuthorUserIdAndDeletedAtIsNull(UUID authorUserId);
+
+    List<CommunityPostComment> findAllByPostIdAndAuthorUserIdAndDeletedAtIsNull(UUID postId, UUID authorUserId);
+
+    long countByStatusAndDeletedAtIsNull(CommunityContentStatus status);
+
+    @Modifying
+    @Transactional
+    @Query("UPDATE CommunityPostComment c SET c.reportCount = c.reportCount + 1 WHERE c.id = :id")
+    void incrementReportCount(@Param("id") UUID id);
 
     Optional<CommunityPostComment> findByIdAndPostIdAndDeletedAtIsNull(UUID id, UUID postId);
 

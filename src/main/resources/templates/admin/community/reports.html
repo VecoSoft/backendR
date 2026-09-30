@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community reports - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community reports</h1>
+            <p>Open reports grouped by what was reported. Resolving closes every open report on that item; reporters get a neutral
+                “We reviewed your report” notice.</p>
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a th:href="@{/admin/community/reports}" class="btn" th:classappend="${type == null || type == ''} ? 'btn-dark' : 'btn-outline-dark'">All</a>
+            <a th:href="@{/admin/community/reports(type='COMMUNITY_POST')}" class="btn" th:classappend="${type == 'COMMUNITY_POST'} ? 'btn-dark' : 'btn-outline-dark'">Posts</a>
+            <a th:href="@{/admin/community/reports(type='COMMUNITY_COMMENT')}" class="btn" th:classappend="${type == 'COMMUNITY_COMMENT'} ? 'btn-dark' : 'btn-outline-dark'">Comments</a>
+            <a th:href="@{/admin/community/reports(type='COMMUNITY_PROFILE')}" class="btn" th:classappend="${type == 'COMMUNITY_PROFILE'} ? 'btn-dark' : 'btn-outline-dark'">Profiles</a>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+    <datalist th:replace="~{admin/community/parts :: reason-datalist}"></datalist>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Reported item</th><th>Reports</th><th>Author</th><th>First / last</th><th style="min-width:360px;">Resolve</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="g : ${results.content}">
+                <td style="max-width:320px;">
+                    <span class="badge text-bg-secondary" th:text="${g.targetType.replace('COMMUNITY_', '')}">POST</span>
+                    <th:block th:if="${g.contentStatus != null && g.contentStatus != 'PROFILE'}">
+                        <span th:replace="~{admin/community/parts :: status(${g.contentStatus})}"></span>
+                    </th:block>
+                    <div class="small mt-1" th:text="${g.preview}">preview</div>
+                    <a th:if="${g.postId != null}" class="small" th:href="@{/admin/community/posts/{id}(id=${g.postId})}">Open post</a>
+                </td>
+                <td>
+                    <span class="badge text-bg-danger" th:text="${g.openCount}">1</span>
+                    <div class="small mt-1"><span th:each="r : ${g.reasons}" class="badge text-bg-warning me-1" th:text="${r}">SPAM</span></div>
+                </td>
+                <td><a th:if="${g.authorUserId != null}" th:href="@{/admin/community/users/{id}(id=${g.authorUserId})}"
+                       th:text="${g.authorUsername != null ? 'u/' + g.authorUsername : '[no username]'}">u/x</a></td>
+                <td class="small text-mono">
+                    <div th:text="${@fmt.dt(g.firstReportedAt)}">-</div>
+                    <div class="text-muted" th:text="${@fmt.dt(g.lastReportedAt)}">-</div>
+                </td>
+                <td>
+                    <form method="post" th:action="@{/admin/community/reports/resolve}" class="d-flex flex-column gap-1">
+                        <input type="hidden" name="targetType" th:value="${g.targetType}"/>
+                        <input type="hidden" name="targetId" th:value="${g.targetId}"/>
+                        <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm" placeholder="Reason (required unless dismissing)"/>
+                        <div class="d-flex gap-1">
+                            <select name="duration" class="form-select form-select-sm" title="Mute/suspend length">
+                                <option value="H1">1 hour</option>
+                                <option value="H24" selected>24 hours</option>
+                                <option value="D7">7 days</option>
+                                <option value="D30">30 days</option>
+                                <option value="CUSTOM">Custom…</option>
+                            </select>
+                            <input type="datetime-local" name="customEnd" class="form-control form-control-sm" title="Custom end (with Custom)"/>
+                        </div>
+                        <div class="btn-group btn-group-sm flex-wrap">
+                            <button name="action" value="DISMISS" class="btn btn-outline-secondary">Dismiss</button>
+                            <button name="action" value="REMOVE" class="btn btn-outline-danger" th:text="${g.targetType == 'COMMUNITY_PROFILE'} ? 'Reset avatar' : 'Remove'">Remove</button>
+                            <button name="action" value="REMOVE_WARN" class="btn btn-outline-danger">+ Warn</button>
+                            <button name="action" value="REMOVE_MUTE" class="btn btn-outline-danger">+ Mute</button>
+                            <button name="action" value="REMOVE_SUSPEND" class="btn btn-danger">+ Suspend</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="5" class="admin-table-empty">No open community reports. 🎉</td></tr>
+            </tbody>
+        </table>
+        <div th:replace="~{admin/community/parts :: pager(${results})}"></div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

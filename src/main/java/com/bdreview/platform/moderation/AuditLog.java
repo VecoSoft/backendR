@@ -36,6 +36,24 @@ public class AuditLog {
     @Column(columnDefinition = "text")
     private String notes;
 
+    // ---- V56: full admin-action trail ----
+
+    /** ADMIN / MODERATOR / SYSTEM (scheduled jobs, auto-moderation). */
+    @Column(name = "actor_role", length = 20)
+    private String actorRole;
+
+    @Column(columnDefinition = "text")
+    private String reason;
+
+    @Column(name = "before_json", columnDefinition = "text")
+    private String beforeJson;
+
+    @Column(name = "after_json", columnDefinition = "text")
+    private String afterJson;
+
+    @Column(name = "ip_address", length = 64)
+    private String ipAddress;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

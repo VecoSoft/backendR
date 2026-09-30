@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Quick-pick reasons for every moderation form (inputs use list="reasonTemplates"). -->
+<datalist th:fragment="reason-datalist" id="reasonTemplates">
+    <option th:each="r : ${reasonTemplates}" th:value="${r}"></option>
+</datalist>
+
+<!-- Content status badge -->
+<span th:fragment="status(status)" class="badge"
+      th:classappend="${status == 'ACTIVE'} ? 'text-bg-success' : (${status == 'REMOVED'} ? 'text-bg-danger' : (${status == 'HIDDEN'} ? 'text-bg-dark' : 'text-bg-warning'))"
+      th:text="${status}">ACTIVE</span>
+
+<!-- Pager: pass the page object and a base URL builder via th:with -->
+<div th:fragment="pager(results)" class="admin-pagination" th:if="${results.totalPages > 0}">
+    <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span>
+        &middot; <span th:text="${results.totalElements}">0</span> total</span>
+    <div class="btn-group btn-group-sm">
+        <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+           th:href="'?' + ${pageQuery} + 'page=' + ${results.number - 1}">Previous</a>
+        <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+           th:href="'?' + ${pageQuery} + 'page=' + ${results.number + 1}">Next</a>
+    </div>
+</div>
+
+</body>
+</html>

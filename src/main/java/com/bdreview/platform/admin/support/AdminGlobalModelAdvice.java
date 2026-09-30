@@ -16,6 +16,13 @@ public class AdminGlobalModelAdvice {
         this.userRepository = userRepository;
     }
 
+    /** ADMIN vs MODERATOR — templates use it to hide ADMIN-only navigation/actions (the server blocks them anyway). */
+    @ModelAttribute("isAdminUser")
+    public boolean isAdminUser(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
+
     @ModelAttribute("currentAdmin")
     public User currentAdmin(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()

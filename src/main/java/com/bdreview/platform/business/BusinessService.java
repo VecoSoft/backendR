@@ -403,19 +403,44 @@ public class BusinessService {
         Pageable pageable = PageRequest.of(page, com.bdreview.platform.common.PageRequestDefaults.clamp(size));
         Page<Business> results = businessRepository.search(categoryId, areaId, priceTier, minRating, lat, lng,
                 radiusMeters, q, location, sort, pageable);
-        Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(results.getContent());
-        Map<UUID, Boolean> claimedByOwner = claimedByOwner(results.getContent());
-        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(results.getContent());
+        // Known limitation: totalElements/totalPages below still reflect raw row counts, so a page
+        // can render fewer than `size` cards when it contains multiple branches of one brand
+        // (see listingResponses' brand collapse).
+        return new org.springframework.data.domain.PageImpl<>(
+                listingResponses(results.getContent()), pageable, results.getTotalElements());
+    }
+
+    /**
+     * Smart search (com.bdreview.platform.search) ranks ids itself, then hands them here so its cards
+     * get exactly the same batched enrichment as {@link #search}. Result order follows `orderedIds`;
+     * ids that no longer resolve (deleted between the two queries) are skipped.
+     */
+    @Transactional(readOnly = true)
+    public List<BusinessResponse> listingResponsesByIds(List<UUID> orderedIds) {
+        if (orderedIds.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Business> byId = businessRepository.findAllByIdInWithPlace(orderedIds).stream()
+                .collect(Collectors.toMap(Business::getId, b -> b));
+        List<Business> ordered = orderedIds.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
+        return listingResponses(ordered);
+    }
+
+    /** Batched card enrichment + brand collapse shared by {@link #search} and {@link #listingResponsesByIds}. */
+    private List<BusinessResponse> listingResponses(List<Business> businesses) {
+        Map<UUID, List<String>> galleryByBusiness = galleryUrlsByBusiness(businesses);
+        Map<UUID, Boolean> claimedByOwner = claimedByOwner(businesses);
+        Map<UUID, BrandSummary> brandByBusiness = brandSummariesFor(businesses);
         // Hours (for "open now"), a top review snippet, and the current active offer — each one
         // batched query for the whole page, same convention as gallery/claimed/brand above, not
         // a per-row lookup. See BusinessResponse's search()-only from() overload.
-        Map<UUID, List<OperatingHoursEntry>> hoursByBusiness = structuredHoursByBusiness(results.getContent());
-        Map<UUID, List<HoursExceptionEntry>> exceptionsByBusiness = hoursExceptionsByBusiness(results.getContent());
-        List<UUID> businessIds = results.getContent().stream().map(Business::getId).toList();
+        Map<UUID, List<OperatingHoursEntry>> hoursByBusiness = structuredHoursByBusiness(businesses);
+        Map<UUID, List<HoursExceptionEntry>> exceptionsByBusiness = hoursExceptionsByBusiness(businesses);
+        List<UUID> businessIds = businesses.stream().map(Business::getId).toList();
         Map<UUID, String> snippetByBusiness = reviewService.topReviewSnippetsByBusiness(businessIds);
         Map<UUID, com.bdreview.platform.offer.ActiveOfferSummary> offerByBusiness =
                 offerService.activeOfferSummariesByBusiness(businessIds);
-        List<BusinessResponse> mapped = results.getContent().stream()
+        List<BusinessResponse> mapped = businesses.stream()
                 .map(b -> BusinessResponse.from(b,
                         photoUrlsFor(b, galleryByBusiness.getOrDefault(b.getId(), List.of())),
                         claimedByOwner.getOrDefault(b.getOwnerUserId(), true),
@@ -428,10 +453,7 @@ public class BusinessService {
         // Collapse rows sharing a brand into one card ("KFC — 5 branches" instead of N cards).
         // branchCount on the surviving row is still the TRUE total across all live branches (from
         // the batched brandSummariesFor lookup above), not just how many happen to be on this page.
-        // Known limitation: totalElements/totalPages below still reflect raw row counts, so a page
-        // can render fewer than `size` cards when it contains multiple branches of one brand.
-        return new org.springframework.data.domain.PageImpl<>(
-                collapseBrandDuplicates(mapped), pageable, results.getTotalElements());
+        return collapseBrandDuplicates(mapped);
     }
 
     private List<BusinessResponse> collapseBrandDuplicates(List<BusinessResponse> content) {

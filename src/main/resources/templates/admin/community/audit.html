@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Audit log - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Audit log</h1>
+            <p>Every admin/moderator action with actor, role, reason, before/after and IP. Read-only.</p>
+        </div>
+        <a class="btn btn-sm btn-outline-secondary" th:href="@{'/admin/community/audit.csv?' + ${pageQuery}}"><i class="bi bi-download"></i> Export CSV</a>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="get" th:action="@{/admin/community/audit}" class="admin-card">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3"><label class="form-label small">Actor id</label>
+                <input type="text" name="actor" class="form-control form-control-sm" th:value="${f.actor}"/></div>
+            <div class="col-md-2"><label class="form-label small">Action contains</label>
+                <input type="text" name="action" class="form-control form-control-sm" th:value="${f.action}" placeholder="REMOVED"/></div>
+            <div class="col-md-2"><label class="form-label small">Target type</label>
+                <select name="targetType" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="t : ${ {'COMMUNITY_POST','COMMUNITY_COMMENT','COMMUNITY_POST_IMAGE','COMMUNITY_USER','COMMUNITY_SETTINGS','COMMUNITY_TOPIC','COMMUNITY_ANNOUNCEMENT','COMMUNITY_PROFILE','STAFF_ROLE','REPORT','REVIEW','BUSINESS_CLAIM'} }"
+                            th:value="${t}" th:text="${t}" th:selected="${f.entityType == t}">T</option>
+                </select></div>
+            <div class="col-md-3"><label class="form-label small">Target id</label>
+                <input type="text" name="targetId" class="form-control form-control-sm" th:value="${f.entityId}"/></div>
+            <div class="col-6 col-md-1"><label class="form-label small">From</label>
+                <input type="date" name="from" class="form-control form-control-sm" th:value="${f.from}"/></div>
+            <div class="col-6 col-md-1"><label class="form-label small">To</label>
+                <input type="date" name="to" class="form-control form-control-sm" th:value="${f.to}"/></div>
+            <div class="col-12 d-flex gap-2">
+                <button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+                <a th:href="@{/admin/community/audit}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </div>
+        </div>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Reason</th><th>Before → after</th><th>IP</th></tr></thead>
+            <tbody>
+            <tr th:each="a : ${results.content}">
+                <td class="small text-mono text-nowrap" th:text="${@fmt.dt(a.createdAt)}">-</td>
+                <td class="small">
+                    <span class="badge text-bg-secondary" th:text="${a.actorRole} ?: '—'">ADMIN</span>
+                    <div th:text="${actors[a.performedByAdmin] != null ? (actors[a.performedByAdmin].name ?: actors[a.performedByAdmin].phoneNumber) : (a.actorRole == 'SYSTEM' ? 'system' : a.performedByAdmin)}">actor</div>
+                </td>
+                <td><span class="badge text-bg-dark" th:text="${a.action}">ACTION</span></td>
+                <td class="small"><div th:text="${a.entityType}">TYPE</div><div class="text-mono text-muted" th:text="${a.entityId}">id</div></td>
+                <td class="small" style="max-width:220px;" th:text="${a.reason ?: a.notes} ?: '—'">reason</td>
+                <td class="small text-mono" style="max-width:340px; word-break:break-all;">
+                    <div class="text-danger" th:if="${a.beforeJson != null}" th:text="${a.beforeJson}">before</div>
+                    <div class="text-success" th:if="${a.afterJson != null}" th:text="${a.afterJson}">after</div>
+                </td>
+                <td class="small text-mono" th:text="${a.ipAddress} ?: '—'">ip</td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="7" class="admin-table-empty">No entries match.</td></tr>
+            </tbody>
+        </table>
+        <div th:replace="~{admin/community/parts :: pager(${results})}"></div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

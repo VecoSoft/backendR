@@ -10,12 +10,12 @@ import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.PageRequestDefaults;
 import com.bdreview.platform.common.PageResponse;
-import com.bdreview.platform.common.RateLimitExceededException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.community.moderation.CommunityPolicyService;
+import com.bdreview.platform.community.moderation.CommunityPolicyService.Action;
 import com.bdreview.platform.gallery.ObjectStorageClient;
 import com.bdreview.platform.gallery.PreSignedUploadResponse;
 import com.bdreview.platform.review.ReviewRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -34,11 +34,17 @@ import java.util.stream.Collectors;
  * migration; formerly a Facebook-style content+image feed). Members post a
  * title + optional body under their Community username (never their real
  * account name), vote, comment/reply (max depth {@value #MAX_COMMENT_DEPTH}),
- * and can optionally tag one business listing and/or attach up to
- * {@value #MAX_POST_PHOTOS} photos (requestImageUploadUrl issues a
- * pre-signed URL per file; createPost/updatePost persist the resulting CDN
- * URLs into community_post_photo — same direct-to-storage flow as the
- * business gallery, one row per photo like review.ReviewPhoto).
+ * and can optionally tag one business listing and/or attach photos
+ * (requestImageUploadUrl issues a pre-signed URL per file; createPost/updatePost
+ * persist the resulting CDN URLs into community_post_photo — same
+ * direct-to-storage flow as the business gallery, one row per photo like
+ * review.ReviewPhoto).
+ *
+ * <p>Since V56 every write goes through {@link CommunityPolicyService} first (maintenance /
+ * read-only mode, MUTE/SUSPEND/BAN restrictions, per-tier rate limits, admin content rules), and
+ * every read respects moderation state: only ACTIVE content circulates, REMOVED content keeps its
+ * place in a thread as a "[Removed by moderators]" placeholder, and PENDING/HIDDEN content is
+ * visible to its own author only.
  */
 @Service
 public class CommunityPostService {
@@ -51,8 +57,9 @@ public class CommunityPostService {
     private static final int MAX_POLL_OPTION_LENGTH = 80;
     /** 1 day / 3 days / 7 days — the only durations a poll can run for (see the V1 poll spec). */
     private static final Set<Integer> ALLOWED_POLL_DURATION_HOURS = Set.of(24, 72, 168);
-    /** Facebook-style photo grid on the composer/feed/detail page — same ceiling as the business gallery. */
-    private static final int MAX_POST_PHOTOS = 10;
+    /** Visible-to-everyone comment states: live ones plus removed placeholders (the thread stays intact). */
+    private static final List<CommunityContentStatus> THREAD_STATUSES =
+            List.of(CommunityContentStatus.ACTIVE, CommunityContentStatus.REMOVED);
 
     private final CommunityPostRepository postRepository;
     private final CommunityPostVoteRepository voteRepository;
@@ -73,8 +80,7 @@ public class CommunityPostService {
     private final ReviewRepository reviewRepository;
     private final ObjectStorageClient objectStorageClient;
     private final CommunityNotifier communityNotifier;
-    private final long maxPostsPerHour;
-    private final long maxCommentsPerHour;
+    private final CommunityPolicyService policy;
 
     public CommunityPostService(CommunityPostRepository postRepository,
                                  CommunityPostVoteRepository voteRepository,
@@ -95,8 +101,7 @@ public class CommunityPostService {
                                  ReviewRepository reviewRepository,
                                  ObjectStorageClient objectStorageClient,
                                  CommunityNotifier communityNotifier,
-                                 @Value("${app.community.max-posts-per-hour:20}") long maxPostsPerHour,
-                                 @Value("${app.community.max-comments-per-hour:60}") long maxCommentsPerHour) {
+                                 CommunityPolicyService policy) {
         this.postRepository = postRepository;
         this.voteRepository = voteRepository;
         this.commentVoteRepository = commentVoteRepository;
@@ -116,8 +121,15 @@ public class CommunityPostService {
         this.reviewRepository = reviewRepository;
         this.objectStorageClient = objectStorageClient;
         this.communityNotifier = communityNotifier;
-        this.maxPostsPerHour = maxPostsPerHour;
-        this.maxCommentsPerHour = maxCommentsPerHour;
+        this.policy = policy;
+    }
+
+    /** V58 promotion hook — optional, so the community works unchanged without the promo module (and in unit tests). */
+    private BusinessPostSupport businessPostSupport;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setBusinessPostSupport(BusinessPostSupport businessPostSupport) {
+        this.businessPostSupport = businessPostSupport;
     }
 
     // -----------------------------------------------------------------
@@ -126,7 +138,11 @@ public class CommunityPostService {
     // then sends the resulting CDN URLs as CreateCommunityPostRequest#imageUrls.
     // -----------------------------------------------------------------
 
-    public PreSignedUploadResponse requestImageUploadUrl(String filename) {
+    public PreSignedUploadResponse requestImageUploadUrl(UUID userId, String filename) {
+        policy.assertCanWrite(requireUser(userId), Action.EDIT);
+        if (!policy.config().settings().getPostTypes().isImagesEnabled()) {
+            throw new BadRequestException("Images are turned off for community posts right now.");
+        }
         String extension = extensionOf(filename);
         if (!ALLOWED_IMAGE_EXTENSIONS.contains(extension)) {
             throw new BadRequestException("Only image files are allowed (jpg, jpeg, png, webp, gif)");
@@ -153,23 +169,28 @@ public class CommunityPostService {
 
     @Transactional
     public CommunityPostResponse createPost(UUID userId, CreateCommunityPostRequest request) {
-        requireCommunityUsername(userId);
-        enforceRateLimit(postRepository.countByAuthorUserIdAndCreatedAtAfter(userId, oneHourAgo()), maxPostsPerHour,
-                "You're posting too frequently — please try again later.");
+        User author = requireCommunityUsername(userId);
+        policy.assertCanWrite(author, Action.POST);
         validatePollRequest(request);
         List<String> photoUrls = normalizedPhotoUrls(request.imageUrls());
+        String topic = normalizeTopic(request.topic());
 
         Business business = resolveBusiness(request.businessId());
         UUID resolvedAreaId = request.areaId() != null ? request.areaId()
                 : (business != null && business.getArea() != null ? business.getArea().getId() : null);
+
+        String hold = policy.checkPost(author, request.title(), request.body(), request.postType(), topic,
+                photoUrls.size(), request.areaId(), true);
 
         CommunityPost post = postRepository.save(CommunityPost.builder()
                 .authorUserId(userId)
                 .title(blankToNull(request.title()))
                 .body(blankToNull(request.body()))
                 .postType(request.postType())
-                .topic(request.topic())
+                .topic(topic)
                 .areaId(resolvedAreaId)
+                .status(hold == null ? CommunityContentStatus.ACTIVE : CommunityContentStatus.PENDING)
+                .holdReason(hold)
                 .build());
 
         savePhotos(post.getId(), photoUrls);
@@ -180,12 +201,21 @@ public class CommunityPostService {
 
         List<UUID> businessIds = business == null ? List.of() : List.of(business.getId());
         saveMentions(post.getId(), businessIds);
-        notifyMentionedBusinesses(post, businessIds);
+        if (hold == null) {
+            notifyMentionedBusinesses(post, businessIds);
+        }
         return toResponse(post, userId);
     }
 
+    private String normalizeTopic(String topic) {
+        if (topic == null || topic.isBlank()) {
+            return policy.config().defaultTopicCode();
+        }
+        return topic.trim().toUpperCase(Locale.ROOT);
+    }
+
     // -----------------------------------------------------------------
-    // Photo attachments — up to MAX_POST_PHOTOS per post, one row each in
+    // Photo attachments — up to the admin's max per post, one row each in
     // community_post_photo (position preserves upload order for the grid).
     // -----------------------------------------------------------------
 
@@ -193,11 +223,7 @@ public class CommunityPostService {
         if (raw == null) {
             return List.of();
         }
-        List<String> urls = raw.stream().filter(Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).toList();
-        if (urls.size() > MAX_POST_PHOTOS) {
-            throw new BadRequestException("A post can have at most " + MAX_POST_PHOTOS + " photos");
-        }
-        return urls;
+        return raw.stream().filter(Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).toList();
     }
 
     private void savePhotos(UUID postId, List<String> photoUrls) {
@@ -258,8 +284,8 @@ public class CommunityPostService {
 
     @Transactional
     public CommunityPollResponse votePoll(UUID userId, UUID postId, UUID optionId) {
-        postRepository.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        policy.assertCanWrite(requireUser(userId), Action.POLL_VOTE);
+        requireLivePost(postId);
         CommunityPostPoll poll = pollRepository.findByPostId(postId)
                 .orElseThrow(() -> new BadRequestException("This post has no poll"));
         if (poll.isClosed()) {
@@ -303,16 +329,89 @@ public class CommunityPostService {
         return new CommunityPollResponse(poll.getId(), optionResponses, total, myVoteOptionId, poll.getClosesAt(), closed);
     }
 
+    /**
+     * Post detail. ACTIVE (and inside its announcement window) → everyone; REMOVED → everyone,
+     * as a content-less placeholder (the author also gets the reason); PENDING/HIDDEN → author only.
+     */
     public CommunityPostResponse getPost(UUID postId, UUID viewerUserId) {
         CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (!isViewable(post, viewerUserId)) {
+            throw new ResourceNotFoundException("Post not found");
+        }
         return toResponse(post, viewerUserId);
     }
 
-    public PageResponse<CommunityPostResponse> feed(CommunityFeedTab tab, CommunityTopic topic, CommunityPostType postType,
+    private boolean isViewable(CommunityPost post, UUID viewerUserId) {
+        boolean isAuthor = viewerUserId != null && viewerUserId.equals(post.getAuthorUserId());
+        return switch (post.getStatus()) {
+            case ACTIVE -> isAuthor || isInsideVisibilityWindow(post);
+            case REMOVED -> true;
+            case PENDING, HIDDEN, DRAFT -> isAuthor;
+        };
+    }
+
+    private static boolean isInsideVisibilityWindow(CommunityPost post) {
+        Instant now = Instant.now();
+        return (post.getVisibleFrom() == null || !post.getVisibleFrom().isAfter(now))
+                && (post.getVisibleUntil() == null || post.getVisibleUntil().isAfter(now));
+    }
+
+    public PageResponse<CommunityPostResponse> feed(CommunityFeedTab tab, String topic, CommunityPostType postType,
                                                       CommunitySortOrder sort, UUID areaId, int page, int size, UUID viewerUserId) {
+        return feedForViewer(tab, topic, postType, sort, areaId, page, size,
+                new BusinessPostSupport.FeedViewer(viewerUserId, areaId, null, null, null));
+    }
+
+    /**
+     * The feed, plus (V58) at most one sponsored business post after every N organic posts. Only
+     * the general and Nearby feeds carry sponsored items — never Following, never a
+     * post-type-filtered view (e.g. Questions/Q&A), and never comments or reviews. Organic order is
+     * exactly what the unsponsored query returned; sponsored items are inserted, never re-ranked in.
+     */
+    public PageResponse<CommunityPostResponse> feedForViewer(CommunityFeedTab tab, String topic, CommunityPostType postType,
+                                                      CommunitySortOrder sort, UUID areaId, int page, int size,
+                                                      BusinessPostSupport.FeedViewer viewer) {
+        PageResponse<CommunityPostResponse> organic = organicFeed(tab, topic, postType, sort, areaId, page, size, viewer.viewerUserId());
+        if (businessPostSupport == null || tab == CommunityFeedTab.FOLLOWING || postType != null) {
+            return organic;
+        }
+        int ratio = businessPostSupport.sponsoredFeedRatio();
+        int slots = ratio <= 0 ? 0 : organic.content().size() / ratio;
+        if (slots == 0) {
+            return organic;
+        }
+        List<BusinessPostSupport.SponsoredSlot> sponsored = businessPostSupport.sponsoredForFeed(viewer, slots,
+                organic.content().stream().map(CommunityPostResponse::id).toList());
+        if (sponsored.isEmpty()) {
+            return organic;
+        }
+        Map<UUID, CommunityPost> sponsoredPosts = postRepository.findAllById(
+                sponsored.stream().map(BusinessPostSupport.SponsoredSlot::postId).toList()).stream()
+                .collect(Collectors.toMap(CommunityPost::getId, p -> p));
+        List<CommunityPost> ordered = sponsored.stream().map(s -> sponsoredPosts.get(s.postId())).filter(Objects::nonNull).toList();
+        List<CommunityPostResponse> sponsoredResponses = buildPageResponse(new PageImpl<>(ordered), viewer.viewerUserId()).content();
+        Map<UUID, BusinessPostSupport.SponsoredSlot> slotByPost = sponsored.stream()
+                .collect(Collectors.toMap(BusinessPostSupport.SponsoredSlot::postId, s -> s, (a, b) -> a));
+
+        List<CommunityPostResponse> merged = new ArrayList<>(organic.content().size() + sponsoredResponses.size());
+        int next = 0;
+        for (int i = 0; i < organic.content().size(); i++) {
+            merged.add(organic.content().get(i));
+            if ((i + 1) % ratio == 0 && next < sponsoredResponses.size()) {
+                CommunityPostResponse s = sponsoredResponses.get(next++);
+                merged.add(s.withSponsored(slotByPost.get(s.id()).info()));
+            }
+        }
+        return new PageResponse<>(merged, organic.page(), organic.size(), organic.totalElements(), organic.totalPages());
+    }
+
+    private PageResponse<CommunityPostResponse> organicFeed(CommunityFeedTab tab, String topic, CommunityPostType postType,
+                                                              CommunitySortOrder sort, UUID areaId, int page, int size, UUID viewerUserId) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
         boolean top = sort == CommunitySortOrder.TOP;
+        String topicCode = topic == null || topic.isBlank() ? null : topic.trim().toUpperCase(Locale.ROOT);
+        Instant now = Instant.now();
         Page<CommunityPost> posts;
         if (tab == CommunityFeedTab.FOLLOWING) {
             if (viewerUserId == null) {
@@ -321,27 +420,33 @@ public class CommunityPostService {
             List<UUID> followedIds = followRepository.findByFollowerUserId(viewerUserId).stream()
                     .map(CommunityFollow::getFollowedUserId).toList();
             posts = followedIds.isEmpty() ? Page.empty(pageable)
-                    : postRepository.findAllByAuthorUserIdInAndDeletedAtIsNullOrderByCreatedAtDesc(followedIds, pageable);
+                    : postRepository.findLiveByAuthors(followedIds, now, pageable);
         } else if (tab == CommunityFeedTab.NEARBY) {
             if (areaId == null) {
                 throw new BadRequestException("Choose an area to see nearby posts");
             }
-            posts = postRepository.findAllByAreaIdAndDeletedAtIsNullOrderByCreatedAtDesc(areaId, pageable);
+            posts = postRepository.findLiveByArea(areaId, now, pageable);
         } else {
             // FOR_YOU (or no tab): no personalization signal exists yet (no follow-topic, no
             // engagement history) — falls back to the plain recent/top feed, optionally
             // narrowed by topic (Category dropdown) and/or postType (All/Questions/Reviews/
             // Discussions tabs) — both optional scalar filters on the same unified query.
-            posts = top ? postRepository.findAllByFiltersOrderByScoreDesc(topic, postType, pageable)
-                    : postRepository.findAllByFiltersOrderByCreatedAtDesc(topic, postType, pageable);
+            // Pinned posts (global, or pinned to the selected topic) always lead.
+            posts = top ? postRepository.findLiveByFiltersOrderByScoreDesc(topicCode, postType, now, pageable)
+                    : postRepository.findLiveByFiltersOrderByCreatedAtDesc(topicCode, postType, now, pageable);
         }
         return buildPageResponse(posts, viewerUserId);
     }
 
+    /** A profile's post list. The profile's own owner also sees their pending/hidden/removed posts. */
     public PageResponse<CommunityPostResponse> postsByAuthor(UUID authorCommunityProfileId, int page, int size, UUID viewerUserId) {
         UUID authorUserId = resolveCommunityProfileId(authorCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
-        Page<CommunityPost> posts = postRepository.findAllByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(authorUserId, pageable);
+        // Business posts (V58) are never listed on the owner's personal profile — that would tie
+        // the pseudonymous u/username to the business.
+        Page<CommunityPost> posts = authorUserId.equals(viewerUserId)
+                ? postRepository.findMemberPostsByAuthor(authorUserId, pageable)
+                : postRepository.findMemberPostsByAuthorAndStatus(authorUserId, CommunityContentStatus.ACTIVE, pageable);
         return buildPageResponse(posts, viewerUserId);
     }
 
@@ -358,13 +463,43 @@ public class CommunityPostService {
         if (!post.getAuthorUserId().equals(userId)) {
             throw new ForbiddenException("You can only edit your own post");
         }
+        if (post.getStatus() == CommunityContentStatus.REMOVED) {
+            throw new ForbiddenException("This post was removed by moderators and can't be edited.");
+        }
+        if (post.getAuthorBusinessId() != null) {
+            // Business posts go through promo.BusinessPostService, which re-applies the promotion rules.
+            throw new BadRequestException("Edit business posts from your business dashboard.");
+        }
+        User author = requireUser(userId);
+        policy.assertCanWrite(author, Action.EDIT);
+        String topic = normalizeTopic(request.topic());
+        List<String> photoUrls = normalizedPhotoUrls(request.imageUrls());
+
+        // A moderator-removed image stays removed: keep its row, and don't let the edit re-add its URL.
+        List<CommunityPostPhoto> existingPhotos = photoRepository.findByPostIdOrderByPositionAsc(postId);
+        Set<String> removedUrls = existingPhotos.stream().filter(p -> p.getRemovedAt() != null)
+                .map(CommunityPostPhoto::getUrl).collect(Collectors.toSet());
+        photoUrls = photoUrls.stream().filter(u -> !removedUrls.contains(u)).toList();
+
+        // Topic unchanged → an old post on a since-disabled topic can still be edited.
+        boolean keepsDisabledTopic = topic.equals(post.getTopic())
+                && policy.config().topic(topic).map(t -> !t.enabled()).orElse(false);
+        String hold = policy.checkPost(author, request.title(), request.body(), post.getPostType(),
+                keepsDisabledTopic ? policy.config().defaultTopicCode() : topic,
+                photoUrls.size(), post.getAreaId(), false);
+
         post.setTitle(blankToNull(request.title()));
         post.setBody(blankToNull(request.body()));
-        post.setTopic(request.topic());
+        post.setTopic(topic);
+        if (hold != null && post.getStatus() == CommunityContentStatus.ACTIVE) {
+            post.setStatus(CommunityContentStatus.PENDING);
+            post.setHoldReason(hold);
+        }
         postRepository.save(post);
 
-        photoRepository.deleteByPostId(postId);
-        savePhotos(postId, normalizedPhotoUrls(request.imageUrls()));
+        photoRepository.deleteAll(existingPhotos.stream().filter(p -> p.getRemovedAt() == null).toList());
+        photoRepository.flush();
+        savePhotos(postId, photoUrls);
 
         mentionRepository.deleteByPostId(postId);
         List<UUID> businessIds = request.businessId() == null ? List.of() : List.of(request.businessId());
@@ -408,8 +543,8 @@ public class CommunityPostService {
         mentionRepository.saveAll(mentions);
     }
 
-    /** Fired once, on creation only — editing a post's business later does not re-notify. */
-    private void notifyMentionedBusinesses(CommunityPost post, List<UUID> businessIds) {
+    /** Fired once, when the post goes live (creation, or approval of a held post) — editing later does not re-notify. */
+    public void notifyMentionedBusinesses(CommunityPost post, List<UUID> businessIds) {
         if (businessIds.isEmpty()) {
             return;
         }
@@ -421,23 +556,30 @@ public class CommunityPostService {
         }
     }
 
-    private Instant oneHourAgo() {
-        return Instant.now().minus(1, ChronoUnit.HOURS);
-    }
-
-    private void enforceRateLimit(long recentCount, long threshold, String message) {
-        if (recentCount >= threshold) {
-            throw new RateLimitExceededException(message);
-        }
+    private User requireUser(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
     private User requireCommunityUsername(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = requireUser(userId);
         if (user.getCommunityUsername() == null) {
             throw new BadRequestException("Set up your Community username before posting.");
         }
         return user;
+    }
+
+    /** Interactions (vote, comment, poll vote, follow-question) only work on live posts. */
+    private CommunityPost requireLivePost(UUID postId) {
+        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (post.getStatus() == CommunityContentStatus.REMOVED) {
+            throw new ForbiddenException("This post was removed by moderators.");
+        }
+        if (post.getStatus() != CommunityContentStatus.ACTIVE || !isInsideVisibilityWindow(post)) {
+            throw new ResourceNotFoundException("Post not found");
+        }
+        return post;
     }
 
     // -----------------------------------------------------------------
@@ -448,8 +590,8 @@ public class CommunityPostService {
 
     @Transactional
     public void vote(UUID userId, UUID postId, CommunityPostVoteType type) {
-        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        policy.assertCanWrite(requireUser(userId), Action.VOTE);
+        CommunityPost post = requireLivePost(postId);
 
         Optional<CommunityPostVote> existing = voteRepository.findByPostIdAndUserId(postId, userId);
         if (existing.isPresent()) {
@@ -486,8 +628,13 @@ public class CommunityPostService {
 
     @Transactional
     public void voteComment(UUID userId, UUID commentId, CommunityPostVoteType type) {
-        commentRepository.findByIdAndDeletedAtIsNull(commentId)
+        policy.assertCanWrite(requireUser(userId), Action.VOTE);
+        CommunityPostComment comment = commentRepository.findByIdAndDeletedAtIsNull(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comment not found"));
+        if (comment.getStatus() != CommunityContentStatus.ACTIVE) {
+            throw new BadRequestException("This comment can't be voted on.");
+        }
+        requireLivePost(comment.getPostId());
 
         Optional<CommunityCommentVote> existing = commentVoteRepository.findByCommentIdAndUserId(commentId, userId);
         if (existing.isPresent()) {
@@ -523,18 +670,40 @@ public class CommunityPostService {
 
     @Transactional
     public CommunityCommentResponse addComment(UUID userId, UUID postId, CreateCommunityCommentRequest request) {
-        requireCommunityUsername(userId);
-        enforceRateLimit(commentRepository.countByAuthorUserIdAndCreatedAtAfter(userId, oneHourAgo()), maxCommentsPerHour,
-                "You're commenting too frequently — please try again later.");
+        CommunityPost post = requireLivePost(postId);
+        UUID asBusinessId = request.asBusinessId();
+        User author;
+        if (asBusinessId != null) {
+            // V58: a business may reply as itself only on its own posts — never on a competitor's
+            // post, a member's post, or anywhere else.
+            Business business = businessRepository.findById(asBusinessId)
+                    .filter(b -> b.getDeletedAt() == null)
+                    .orElseThrow(() -> new ResourceNotFoundException("Business not found"));
+            if (!business.getOwnerUserId().equals(userId)) {
+                throw new ForbiddenException("You can only reply as a business you own.");
+            }
+            if (!asBusinessId.equals(post.getAuthorBusinessId())) {
+                throw new ForbiddenException("A business can only reply as itself on its own posts.");
+            }
+            author = requireUser(userId);
+        } else {
+            author = requireCommunityUsername(userId);
+        }
+        policy.assertCanWrite(author, Action.COMMENT);
 
-        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (post.isLocked()) {
+            throw new ForbiddenException("Comments are turned off for this post.");
+        }
+        String hold = policy.checkComment(request.content());
 
         short depth = 0;
         CommunityPostComment parent = null;
         if (request.parentCommentId() != null) {
             parent = commentRepository.findByIdAndPostIdAndDeletedAtIsNull(request.parentCommentId(), postId)
                     .orElseThrow(() -> new BadRequestException("The comment you're replying to could not be found"));
+            if (parent.getStatus() != CommunityContentStatus.ACTIVE) {
+                throw new BadRequestException("You can't reply to this comment.");
+            }
             if (parent.getDepth() >= MAX_COMMENT_DEPTH) {
                 throw new BadRequestException("This thread is too deep to reply to further");
             }
@@ -546,8 +715,15 @@ public class CommunityPostService {
         }
 
         CommunityPostComment comment = commentRepository.save(CommunityPostComment.builder()
-                .postId(postId).authorUserId(userId).parentCommentId(request.parentCommentId())
-                .depth(depth).content(request.content()).build());
+                .postId(postId).authorUserId(userId).authorBusinessId(asBusinessId).parentCommentId(request.parentCommentId())
+                .depth(depth).content(request.content().trim())
+                .status(hold == null ? CommunityContentStatus.ACTIVE : CommunityContentStatus.PENDING)
+                .holdReason(hold)
+                .build());
+        if (hold != null) {
+            // Held for review: counters and notifications wait for approval (CommunityModerationService#approve).
+            return toCommentResponse(comment, userId);
+        }
         postRepository.adjustCommentCount(postId, 1);
         if (depth == 0) {
             postRepository.adjustAnswerCount(postId, 1);
@@ -564,10 +740,14 @@ public class CommunityPostService {
     }
 
     public PageResponse<CommunityCommentResponse> listComments(UUID postId, int page, int size, UUID viewerUserId) {
-        postRepository.findByIdAndDeletedAtIsNull(postId)
+        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        if (!isViewable(post, viewerUserId)) {
+            throw new ResourceNotFoundException("Post not found");
+        }
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size), Sort.by(Sort.Direction.ASC, "createdAt"));
-        Page<CommunityPostComment> comments = commentRepository.findByPostIdAndDeletedAtIsNullOrderByCreatedAtAsc(postId, pageable);
+        Page<CommunityPostComment> comments = commentRepository.findThread(postId, THREAD_STATUSES,
+                viewerUserId == null ? new UUID(0L, 0L) : viewerUserId, pageable);
 
         // A best-answer comment (if any) sorts first among the top-level (depth 0) items —
         // nested replies stay attached to their parent via parentCommentId regardless of array
@@ -584,16 +764,19 @@ public class CommunityPostService {
                         .collect(Collectors.toMap(CommunityCommentVote::getCommentId, CommunityCommentVote::getVoteType));
 
         List<CommunityCommentResponse> mapped = ordered.stream()
-                .map(c -> toCommentResponse(c, authors.get(c.getAuthorUserId()), reviewCounts, myVotes.get(c.getId())))
+                .map(c -> toCommentResponse(c, authors.get(c.getAuthorUserId()), reviewCounts, myVotes.get(c.getId()), viewerUserId))
                 .toList();
         return PageResponse.of(new PageImpl<>(mapped, pageable, comments.getTotalElements()));
     }
 
-    /** Community profile page's "Comments" tab. */
+    /** Community profile page's "Comments" tab — live comments only (the owner also sees their own held/removed ones). */
     public PageResponse<CommunityCommentResponse> commentsByAuthor(UUID authorCommunityProfileId, int page, int size, UUID viewerUserId) {
         UUID authorUserId = resolveCommunityProfileId(authorCommunityProfileId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), PageRequestDefaults.clamp(size));
-        Page<CommunityPostComment> comments = commentRepository.findByAuthorUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(authorUserId, pageable);
+        Page<CommunityPostComment> comments = authorUserId.equals(viewerUserId)
+                ? commentRepository.findByAuthorUserIdAndAuthorBusinessIdIsNullAndDeletedAtIsNullOrderByCreatedAtDesc(authorUserId, pageable)
+                : commentRepository.findByAuthorUserIdAndAuthorBusinessIdIsNullAndStatusAndDeletedAtIsNullOrderByCreatedAtDesc(
+                        authorUserId, CommunityContentStatus.ACTIVE, pageable);
 
         List<UUID> commentIds = comments.getContent().stream().map(CommunityPostComment::getId).toList();
         Map<UUID, User> authors = loadAuthors(comments.getContent().stream().map(CommunityPostComment::getAuthorUserId).toList());
@@ -603,7 +786,7 @@ public class CommunityPostService {
                         .collect(Collectors.toMap(CommunityCommentVote::getCommentId, CommunityCommentVote::getVoteType));
 
         Page<CommunityCommentResponse> mapped = comments.map(c -> toCommentResponse(
-                c, authors.get(c.getAuthorUserId()), reviewCounts, myVotes.get(c.getId())));
+                c, authors.get(c.getAuthorUserId()), reviewCounts, myVotes.get(c.getId()), viewerUserId));
         return PageResponse.of(mapped);
     }
 
@@ -618,11 +801,15 @@ public class CommunityPostService {
         if (!isCommentAuthor && !isPostAuthor) {
             throw new ForbiddenException("You can't delete this comment");
         }
+        // PENDING/HIDDEN comments were never added to the post's counters.
+        boolean counted = comment.getStatus() == CommunityContentStatus.ACTIVE || comment.getStatus() == CommunityContentStatus.REMOVED;
         comment.setDeletedAt(Instant.now());
         commentRepository.save(comment);
-        postRepository.adjustCommentCount(postId, -1);
-        if (comment.getDepth() == 0) {
-            postRepository.adjustAnswerCount(postId, -1);
+        if (counted) {
+            postRepository.adjustCommentCount(postId, -1);
+            if (comment.getDepth() == 0) {
+                postRepository.adjustAnswerCount(postId, -1);
+            }
         }
     }
 
@@ -639,6 +826,7 @@ public class CommunityPostService {
         if (!post.getAuthorUserId().equals(userId)) {
             throw new ForbiddenException("Only the question's author can mark a best answer");
         }
+        policy.assertCanWrite(requireUser(userId), Action.EDIT);
         if (post.getPostType() != CommunityPostType.QUESTION) {
             throw new BadRequestException("Only questions can have a best answer");
         }
@@ -646,6 +834,9 @@ public class CommunityPostService {
                 .orElseThrow(() -> new ResourceNotFoundException("Answer not found"));
         if (comment.getDepth() != 0) {
             throw new BadRequestException("Only a top-level answer can be marked best");
+        }
+        if (comment.getStatus() != CommunityContentStatus.ACTIVE) {
+            throw new BadRequestException("This answer can't be marked best");
         }
 
         commentRepository.clearBestAnswer(postId);
@@ -665,6 +856,7 @@ public class CommunityPostService {
         if (!post.getAuthorUserId().equals(userId)) {
             throw new ForbiddenException("Only the question's author can unmark a best answer");
         }
+        policy.assertCanWrite(requireUser(userId), Action.EDIT);
         CommunityPostComment comment = commentRepository.findByIdAndPostIdAndDeletedAtIsNull(commentId, postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Answer not found"));
         comment.setBestAnswer(false);
@@ -700,6 +892,7 @@ public class CommunityPostService {
         if (post.getPostType() != CommunityPostType.QUESTION) {
             throw new BadRequestException("Only questions have an open/closed status");
         }
+        policy.assertCanWrite(requireUser(userId), Action.EDIT);
         return post;
     }
 
@@ -728,6 +921,7 @@ public class CommunityPostService {
 
     @Transactional
     public void followQuestion(UUID userId, UUID postId) {
+        policy.assertCanWrite(requireUser(userId), Action.FOLLOW);
         requireQuestionPost(postId);
         if (questionFollowRepository.existsByUserIdAndPostId(userId, postId)) {
             return;
@@ -751,8 +945,7 @@ public class CommunityPostService {
     }
 
     private CommunityPost requireQuestionPost(UUID postId) {
-        CommunityPost post = postRepository.findByIdAndDeletedAtIsNull(postId)
-                .orElseThrow(() -> new ResourceNotFoundException("Post not found"));
+        CommunityPost post = requireLivePost(postId);
         if (post.getPostType() != CommunityPostType.QUESTION) {
             throw new BadRequestException("Only questions can be followed or passed");
         }
@@ -767,10 +960,13 @@ public class CommunityPostService {
      * falls through to pure recency.
      */
     public List<CommunityQuestionRecommendationResponse> recommendedQuestions(UUID viewerId) {
-        List<CommunityTopic> authoredTopics = postRepository.findDistinctTopicsByAuthor(viewerId);
-        Collection<CommunityTopic> affinityTopics = authoredTopics.isEmpty()
-                ? EnumSet.allOf(CommunityTopic.class)
-                : EnumSet.copyOf(authoredTopics);
+        List<String> authoredTopics = postRepository.findDistinctTopicsByAuthor(viewerId);
+        Collection<String> affinityTopics = authoredTopics.isEmpty()
+                ? policy.config().topics().stream().map(t -> t.code()).toList()
+                : authoredTopics;
+        if (affinityTopics.isEmpty()) {
+            affinityTopics = List.of("GENERAL");
+        }
         List<CommunityPost> candidates = postRepository.findRecommendedQuestions(
                 CommunityPostType.QUESTION, viewerId, affinityTopics, PageRequest.of(0, RECOMMENDED_QUESTIONS_LIMIT));
         return candidates.stream().map(this::toQuestionRecommendationResponse).toList();
@@ -802,6 +998,7 @@ public class CommunityPostService {
 
     @Transactional
     public void follow(UUID followerUserId, UUID followedCommunityProfileId) {
+        policy.assertCanWrite(requireUser(followerUserId), Action.FOLLOW);
         UUID followedUserId = resolveCommunityProfileId(followedCommunityProfileId);
         if (followerUserId.equals(followedUserId)) {
             throw new BadRequestException("You can't follow yourself");
@@ -827,8 +1024,8 @@ public class CommunityPostService {
         User user = userRepository.findByCommunityUsernameIgnoreCase(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Community profile not found"));
         long reviewCount = reviewRepository.countByUserIdAndDeletedAtIsNull(user.getId());
-        long postCount = postRepository.countByAuthorUserIdAndDeletedAtIsNull(user.getId());
-        long commentCount = commentRepository.countByAuthorUserIdAndDeletedAtIsNull(user.getId());
+        long postCount = postRepository.countByAuthorUserIdAndStatusAndDeletedAtIsNull(user.getId(), CommunityContentStatus.ACTIVE);
+        long commentCount = commentRepository.countByAuthorUserIdAndStatusAndDeletedAtIsNull(user.getId(), CommunityContentStatus.ACTIVE);
         boolean isFollowing = viewerUserId != null
                 && followRepository.existsByFollowerUserIdAndFollowedUserId(viewerUserId, user.getId());
         long followerCount = followRepository.countByFollowedUserId(user.getId());
@@ -897,6 +1094,9 @@ public class CommunityPostService {
         Set<UUID> answeredPostIds = loadPostIdsWithBestAnswer(content.stream()
                 .filter(p -> p.getPostType() == CommunityPostType.QUESTION).map(CommunityPost::getId).toList());
         Map<UUID, List<String>> photosByPost = batchLoadPhotos(content);
+        Map<UUID, Business> authorBusinesses = loadBusinesses(content.stream()
+                .map(CommunityPost::getAuthorBusinessId).filter(Objects::nonNull).toList());
+        Map<UUID, com.bdreview.platform.promo.BusinessPostView> promotions = promotionViews(content, viewerUserId);
 
         Page<CommunityPostResponse> mapped = posts.map(post -> assembleResponse(
                 post, authors.get(post.getAuthorUserId()),
@@ -907,11 +1107,23 @@ public class CommunityPostService {
                 post.getAreaId() == null ? null : areasById.get(post.getAreaId()),
                 pollsByPostId.get(post.getId()),
                 answeredPostIds.contains(post.getId()),
-                photosByPost.getOrDefault(post.getId(), List.of())));
+                photosByPost.getOrDefault(post.getId(), List.of()),
+                viewerUserId,
+                post.getAuthorBusinessId() == null ? null : authorBusinesses.get(post.getAuthorBusinessId()),
+                promotions.get(post.getId())));
         return PageResponse.of(mapped);
     }
 
-    private CommunityPostResponse toResponse(CommunityPost post, UUID viewerUserId) {
+    /** V58: promotion details for the business posts on a page (one batched lookup; none when the promo module is absent). */
+    private Map<UUID, com.bdreview.platform.promo.BusinessPostView> promotionViews(List<CommunityPost> posts, UUID viewerUserId) {
+        List<UUID> businessPostIds = posts.stream().filter(p -> p.getAuthorBusinessId() != null).map(CommunityPost::getId).toList();
+        if (businessPostSupport == null || businessPostIds.isEmpty()) {
+            return new HashMap<>();
+        }
+        return new HashMap<>(businessPostSupport.views(businessPostIds, viewerUserId));
+    }
+
+    public CommunityPostResponse toResponse(CommunityPost post, UUID viewerUserId) {
         User author = userRepository.findById(post.getAuthorUserId()).orElse(null);
         List<CommunityPostMention> mentions = mentionRepository.findByPostId(post.getId());
         Map<UUID, Business> businessesById = loadBusinesses(mentions.stream().map(CommunityPostMention::getBusinessId).toList());
@@ -928,15 +1140,19 @@ public class CommunityPostService {
                         .orElse(null);
         boolean hasBestAnswer = post.getPostType() == CommunityPostType.QUESTION
                 && commentRepository.findBestAnswerByPostId(post.getId()).isPresent();
+        Business authorBusiness = post.getAuthorBusinessId() == null ? null
+                : businessRepository.findById(post.getAuthorBusinessId()).orElse(null);
         return assembleResponse(post, author, mentions, businessesById, myVote, reviewCounts, area, poll, hasBestAnswer,
-                loadPhotos(post));
+                loadPhotos(post), viewerUserId, authorBusiness, promotionViews(List.of(post), viewerUserId).get(post.getId()));
     }
 
-    /** Ordered photo URLs for one post; a legacy pre-V1 post with no community_post_photo rows falls back to its single legacy image_url. */
+    /** Ordered, non-removed photo URLs for one post; a legacy pre-V1 post with no community_post_photo rows falls back to its single legacy image_url. */
     private List<String> loadPhotos(CommunityPost post) {
-        List<String> urls = photoRepository.findByPostIdOrderByPositionAsc(post.getId()).stream()
-                .map(CommunityPostPhoto::getUrl).toList();
-        return urls.isEmpty() && post.getImageUrl() != null ? List.of(post.getImageUrl()) : urls;
+        List<CommunityPostPhoto> rows = photoRepository.findByPostIdOrderByPositionAsc(post.getId());
+        if (rows.isEmpty() && post.getImageUrl() != null) {
+            return List.of(post.getImageUrl());
+        }
+        return rows.stream().filter(p -> p.getRemovedAt() == null).map(CommunityPostPhoto::getUrl).toList();
     }
 
     /** Batched post-id -> ordered photo URLs for a feed page — avoids one query per post. */
@@ -944,11 +1160,12 @@ public class CommunityPostService {
         if (posts.isEmpty()) {
             return Map.of();
         }
-        Map<UUID, List<String>> byPostId = photoRepository.findByPostIdIn(posts.stream().map(CommunityPost::getId).toList())
-                .stream().collect(Collectors.groupingBy(CommunityPostPhoto::getPostId,
-                        Collectors.collectingAndThen(Collectors.toList(), CommunityPostService::sortedPhotoUrls)));
+        Map<UUID, List<CommunityPostPhoto>> rowsByPost = photoRepository.findByPostIdIn(posts.stream().map(CommunityPost::getId).toList())
+                .stream().collect(Collectors.groupingBy(CommunityPostPhoto::getPostId));
+        Map<UUID, List<String>> byPostId = new HashMap<>();
+        rowsByPost.forEach((postId, rows) -> byPostId.put(postId, sortedPhotoUrls(rows)));
         for (CommunityPost post : posts) {
-            if (!byPostId.containsKey(post.getId()) && post.getImageUrl() != null) {
+            if (!rowsByPost.containsKey(post.getId()) && post.getImageUrl() != null) {
                 byPostId.put(post.getId(), List.of(post.getImageUrl()));
             }
         }
@@ -956,7 +1173,8 @@ public class CommunityPostService {
     }
 
     private static List<String> sortedPhotoUrls(List<CommunityPostPhoto> photos) {
-        return photos.stream().sorted(Comparator.comparing(CommunityPostPhoto::getPosition))
+        return photos.stream().filter(p -> p.getRemovedAt() == null)
+                .sorted(Comparator.comparing(CommunityPostPhoto::getPosition))
                 .map(CommunityPostPhoto::getUrl).toList();
     }
 
@@ -992,30 +1210,62 @@ public class CommunityPostService {
                                                      CommunityAreaSummary area,
                                                      CommunityPollResponse poll,
                                                      boolean hasBestAnswer,
-                                                     List<String> imageUrls) {
+                                                     List<String> imageUrls,
+                                                     UUID viewerUserId,
+                                                     Business authorBusiness,
+                                                     com.bdreview.platform.promo.BusinessPostView promotion) {
         List<CommunityMentionedBusinessSummary> mentionSummaries = mentions.stream()
                 .map(m -> businessesById.get(m.getBusinessId()))
                 .filter(Objects::nonNull)
                 .map(this::toBusinessSummary)
                 .toList();
 
+        boolean removed = post.getStatus() == CommunityContentStatus.REMOVED;
+        boolean isAuthor = viewerUserId != null && viewerUserId.equals(post.getAuthorUserId());
+        // A business post is shown under the business, never under the owner's pseudonymous
+        // account — the author slot carries a blank placeholder instead.
+        CommunityAuthorSummary authorSummary = post.isOfficial()
+                ? CommunityAuthorSummary.jachaiTeam()
+                : post.getAuthorBusinessId() != null ? BUSINESS_AUTHOR_PLACEHOLDER
+                : toAuthorSummary(author, post.getAuthorUserId(), reviewCounts);
+        BusinessIdentity businessIdentity = authorBusiness == null ? null : toBusinessIdentity(authorBusiness, area);
+
+        // A removed post keeps its place (and its comments) but never its content.
         return new CommunityPostResponse(
                 post.getId(),
-                toAuthorSummary(author, post.getAuthorUserId(), reviewCounts),
-                post.getTitle(),
-                post.getBody(),
-                imageUrls,
+                authorSummary,
+                removed ? null : post.getTitle(),
+                removed ? null : post.getBody(),
+                removed ? List.of() : imageUrls,
                 post.getPostType(),
                 post.getTopic(),
                 area,
                 post.getUpvoteCount(), post.getDownvoteCount(), post.getScore(),
                 myVote,
                 post.getCommentCount(),
-                mentionSummaries,
-                poll,
+                removed ? List.of() : mentionSummaries,
+                removed ? null : poll,
                 questionStatus(post, hasBestAnswer),
                 post.getAnswerCount(),
-                post.getCreatedAt(), post.getUpdatedAt());
+                post.getCreatedAt(), post.getUpdatedAt(),
+                post.getStatus(),
+                post.isLocked(),
+                post.isPinnedNow(),
+                post.isFeatured(),
+                post.isOfficial(),
+                removed && isAuthor ? post.getRemovedReason() : null,
+                businessIdentity,
+                removed ? null : promotion,
+                null);
+    }
+
+    /** Stands in for the author of a business post/comment (V58) — carries no member identity at all. */
+    private static final CommunityAuthorSummary BUSINESS_AUTHOR_PLACEHOLDER =
+            new CommunityAuthorSummary(new UUID(0L, 0L), null, 0, null, false, null, false);
+
+    private static BusinessIdentity toBusinessIdentity(Business business, CommunityAreaSummary area) {
+        return new BusinessIdentity(business.getId(), business.getName(), business.getSlug(), business.getLogoUrl(),
+                business.isVerified(), area == null ? null : area.name());
     }
 
     /** Derived, not stored — see CommunityQuestionStatus and V35's migration comment. */
@@ -1035,21 +1285,31 @@ public class CommunityPostService {
         CommunityPostVoteType myVote = viewerUserId == null ? null :
                 commentVoteRepository.findByCommentIdAndUserId(comment.getId(), viewerUserId)
                         .map(CommunityCommentVote::getVoteType).orElse(null);
-        return toCommentResponse(comment, author, reviewCounts, myVote);
+        return toCommentResponse(comment, author, reviewCounts, myVote, viewerUserId);
     }
 
     private CommunityCommentResponse toCommentResponse(CommunityPostComment comment, User author,
-                                                         Map<UUID, Long> reviewCounts, CommunityPostVoteType myVote) {
+                                                         Map<UUID, Long> reviewCounts, CommunityPostVoteType myVote,
+                                                         UUID viewerUserId) {
+        boolean removed = comment.getStatus() == CommunityContentStatus.REMOVED;
+        boolean isAuthor = viewerUserId != null && viewerUserId.equals(comment.getAuthorUserId());
+        // Business replies (V58, rare) are shown under the business, never the owner's account.
+        BusinessIdentity business = comment.getAuthorBusinessId() == null ? null
+                : businessRepository.findById(comment.getAuthorBusinessId())
+                        .map(b -> toBusinessIdentity(b, null)).orElse(null);
         return new CommunityCommentResponse(
                 comment.getId(),
-                toAuthorSummary(author, comment.getAuthorUserId(), reviewCounts),
-                comment.getContent(),
+                business != null ? BUSINESS_AUTHOR_PLACEHOLDER : toAuthorSummary(author, comment.getAuthorUserId(), reviewCounts),
+                removed ? CommunityCommentResponse.REMOVED_PLACEHOLDER : comment.getContent(),
                 comment.getParentCommentId(),
                 comment.getDepth(),
                 comment.isBestAnswer(),
                 comment.getUpvoteCount(), comment.getDownvoteCount(), comment.getScore(),
                 myVote,
-                comment.getCreatedAt(), comment.getUpdatedAt());
+                comment.getCreatedAt(), comment.getUpdatedAt(),
+                comment.getStatus(),
+                removed && isAuthor ? comment.getRemovedReason() : null,
+                business);
     }
 
     /** Never includes real name/phone/real profile photo, or the real user id — see CommunityAuthorSummary. */
@@ -1057,12 +1317,12 @@ public class CommunityPostService {
         if (user == null) {
             // No row to read a communityProfileId off of (deleted/missing account) — fallbackId
             // here is the post/comment's own stored author_user_id, a dead-end lookup either way.
-            return new CommunityAuthorSummary(fallbackId, null, 0, null, false, null);
+            return new CommunityAuthorSummary(fallbackId, null, 0, null, false, null, false);
         }
         long reviewCount = reviewCounts.getOrDefault(user.getId(), 0L);
         return new CommunityAuthorSummary(
                 user.getCommunityProfileId(), user.getCommunityUsername(),
-                reviewCount, user.getCreatedAt(), user.isOtpVerified(), user.getCommunityAvatarUrl());
+                reviewCount, user.getCreatedAt(), user.isOtpVerified(), user.getCommunityAvatarUrl(), false);
     }
 
     private CommunityMentionedBusinessSummary toBusinessSummary(Business business) {

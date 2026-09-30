@@ -1,0 +1,117 @@
+package com.bdreview.platform.promo;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+
+/**
+ * Short-lived counters for promotion serving (V58): the per-viewer daily frequency cap and the
+ * 30-minute impression dedupe. Keyed by a session hash — SHA-256 of the client's random
+ * per-browser id plus the day — so nothing identifies a person, and the hash can't be linked
+ * across days. Redis when available (shared by every instance); an in-memory fallback otherwise,
+ * so serving never breaks because Redis is down.
+ */
+@Component
+public class PromoCounters {
+
+    private static final Logger log = LoggerFactory.getLogger(PromoCounters.class);
+    private static final ZoneId ZONE = ZoneId.of("Asia/Dhaka");
+    private static final Pattern SESSION_ID = Pattern.compile("^[A-Za-z0-9_-]{8,64}$");
+    private static final Duration REDIS_BACKOFF = Duration.ofSeconds(60);
+
+    private final ObjectProvider<StringRedisTemplate> redisProvider;
+    private final Map<String, long[]> memory = new ConcurrentHashMap<>();
+    private volatile long redisDisabledUntil;
+
+    public PromoCounters(ObjectProvider<StringRedisTemplate> redisProvider) {
+        this.redisProvider = redisProvider;
+    }
+
+    /** Null for a missing/malformed id — callers then skip per-viewer caps. */
+    public static String sessionHash(String sessionId) {
+        if (sessionId == null || !SESSION_ID.matcher(sessionId).matches()) {
+            return null;
+        }
+        try {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            byte[] digest = sha.digest(("jachai-promo:" + LocalDate.now(ZONE) + ":" + sessionId).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** How many times this boost was already served to this session today. */
+    public long servedToday(String sessionHash, java.util.UUID boostId) {
+        return get("promo:fc:" + LocalDate.now(ZONE) + ":" + boostId + ":" + sessionHash);
+    }
+
+    public void recordServed(String sessionHash, java.util.UUID boostId) {
+        increment("promo:fc:" + LocalDate.now(ZONE) + ":" + boostId + ":" + sessionHash, Duration.ofHours(26));
+    }
+
+    /** True the first time within 30 minutes for this (session, event, target) — the dedupe for impressions. */
+    public boolean firstWithin30Minutes(String sessionHash, String event, String target) {
+        return increment("promo:dd:" + sessionHash + ":" + event + ":" + target, Duration.ofMinutes(30)) == 1;
+    }
+
+    private long get(String key) {
+        StringRedisTemplate redis = redis();
+        if (redis != null) {
+            try {
+                String v = redis.opsForValue().get(key);
+                return v == null ? 0 : Long.parseLong(v);
+            } catch (Exception e) {
+                redisFailed(e);
+            }
+        }
+        long[] entry = memory.get(key);
+        return entry == null || entry[1] < System.currentTimeMillis() ? 0 : entry[0];
+    }
+
+    private long increment(String key, Duration ttl) {
+        StringRedisTemplate redis = redis();
+        if (redis != null) {
+            try {
+                Long n = redis.opsForValue().increment(key);
+                if (n != null && n == 1) {
+                    redis.expire(key, ttl);
+                }
+                return n == null ? 1 : n;
+            } catch (Exception e) {
+                redisFailed(e);
+            }
+        }
+        long now = System.currentTimeMillis();
+        if (memory.size() > 200_000) {
+            memory.entrySet().removeIf(en -> en.getValue()[1] < now);
+        }
+        long[] entry = memory.compute(key, (k, v) -> v == null || v[1] < now ? new long[]{1, now + ttl.toMillis()} : new long[]{v[0] + 1, v[1]});
+        return entry[0];
+    }
+
+    private StringRedisTemplate redis() {
+        return System.currentTimeMillis() < redisDisabledUntil ? null : redisProvider.getIfAvailable();
+    }
+
+    private void redisFailed(Exception e) {
+        if (System.currentTimeMillis() >= redisDisabledUntil) {
+            log.warn("Redis unavailable for promotion counters ({}); using in-memory counters for {}s",
+                    e.getMessage(), REDIS_BACKOFF.toSeconds());
+        }
+        redisDisabledUntil = System.currentTimeMillis() + REDIS_BACKOFF.toMillis();
+    }
+}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community members - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community members</h1>
+            <p>Members are shown by their community username. Real identities stay hidden (admins can reveal one, with a reason, on the member page).</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="get" th:action="@{/admin/community/users}" class="admin-card d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label small">Username</label>
+            <input type="text" name="q" class="form-control form-control-sm" th:value="${q}" placeholder="u/name"/>
+        </div>
+        <div>
+            <label class="form-label small">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option th:each="s : ${ {'ACTIVE','MUTE','SUSPEND','BAN'} }" th:value="${s}" th:text="${s}" th:selected="${status == s}">S</option>
+            </select>
+        </div>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Member</th><th class="text-end">Karma</th><th class="text-end">Posts</th><th class="text-end">Comments</th>
+                <th class="text-end">Reports received</th><th>Status</th><th>Account age</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="m : ${results.content}">
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <img th:if="${m.avatarUrl != null}" th:src="${m.avatarUrl}" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;"/>
+                        <span th:unless="${m.avatarUrl != null}" class="d-inline-flex align-items-center justify-content-center bg-secondary text-white rounded-circle small"
+                              style="width:28px;height:28px;" th:text="${m.username.substring(0, 1).toUpperCase()}">U</span>
+                        <a th:href="@{/admin/community/users/{id}(id=${m.userId})}" class="fw-semibold" th:text="'u/' + ${m.username}">u/x</a>
+                        <span th:if="${m.trusted}" class="badge text-bg-info">Trusted</span>
+                        <span th:if="${m.moderator}" class="badge text-bg-primary">Moderator</span>
+                    </div>
+                </td>
+                <td class="text-end text-mono" th:text="${m.karma}">0</td>
+                <td class="text-end text-mono" th:text="${m.posts}">0</td>
+                <td class="text-end text-mono" th:text="${m.comments}">0</td>
+                <td class="text-end text-mono" th:classappend="${m.reportsReceived > 0} ? 'text-danger fw-bold'" th:text="${m.reportsReceived}">0</td>
+                <td><span class="badge" th:classappend="${m.status == 'ACTIVE'} ? 'text-bg-success' : 'text-bg-danger'" th:text="${m.status}">ACTIVE</span></td>
+                <td class="small" th:text="${@fmt.age(m.accountCreatedAt)}">3d</td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="7" class="admin-table-empty">No members match.</td></tr>
+            </tbody>
+        </table>
+        <div th:replace="~{admin/community/parts :: pager(${results})}"></div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

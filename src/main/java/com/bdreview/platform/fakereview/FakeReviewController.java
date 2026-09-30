@@ -1,5 +1,6 @@
 package com.bdreview.platform.fakereview;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.common.CurrentUser;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +11,7 @@ import java.util.UUID;
 /** Admin-facing view of the per-signal breakdown behind a review's suspicion score (spec §12/§14). */
 @RestController
 @RequestMapping("/api/v1/admin/fake-review-signals")
+@PreAuthorize("hasRole('ADMIN')")
 public class FakeReviewController {
 
     private final FakeReviewSignalRepository signalRepository;

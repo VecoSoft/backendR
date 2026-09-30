@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Moderators - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community moderators</h1>
+            <p>Moderators sign in to this panel with their own account's phone number and password. They can moderate posts, comments,
+                reports, the pending queue and member restrictions — but can't change settings, roles or feature flags, or reveal identities.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="post" th:action="@{/admin/community/roles}" class="admin-card d-flex flex-wrap gap-2 align-items-end">
+        <div>
+            <label class="form-label small">Phone number of an existing account</label>
+            <input type="text" name="phoneNumber" class="form-control form-control-sm" placeholder="01XXXXXXXXX" required/>
+        </div>
+        <div style="min-width:300px;">
+            <label class="form-label small">Note (optional)</label>
+            <input type="text" name="reason" class="form-control form-control-sm"/>
+        </div>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-person-plus"></i> Make moderator</button>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Name</th><th>Phone</th><th>Community username</th><th>Account</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="u : ${moderators}">
+                <td th:text="${u.name} ?: '—'">Name</td>
+                <td class="text-mono" th:text="${u.phoneNumber}">+880</td>
+                <td th:text="${u.communityUsername != null ? 'u/' + u.communityUsername : '—'}">u/x</td>
+                <td><span class="badge text-bg-secondary" th:text="${u.role}">CONSUMER</span></td>
+                <td class="text-end">
+                    <form method="post" th:action="@{/admin/community/roles/{id}/remove(id=${u.id})}"
+                          onsubmit="return confirm('Remove moderator access? Their open admin session ends immediately.');">
+                        <button class="btn btn-sm btn-outline-danger">Remove role</button>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${moderators.isEmpty()}"><td colspan="5" class="admin-table-empty">No moderators yet.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

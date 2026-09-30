@@ -28,6 +28,14 @@ public class CommunityPost {
     @Column(name = "author_user_id", nullable = false)
     private UUID authorUserId;
 
+    /**
+     * V58: set when the post is published AS a business (promo.BusinessPostService). The owner's
+     * pseudonymous community identity is then never exposed on the post — see
+     * CommunityPostService#assembleResponse.
+     */
+    @Column(name = "author_business_id")
+    private UUID authorBusinessId;
+
     /** Nullable only for pre-V1 legacy posts (never required going forward — see CreateCommunityPostRequest). */
     @Column(length = 150)
     private String title;
@@ -51,10 +59,10 @@ public class CommunityPost {
     @Column(name = "post_type", nullable = false, length = 20)
     private CommunityPostType postType = CommunityPostType.DISCUSSION;
 
+    /** A community_topic.code (V56 — was the CommunityTopic enum); same string values on the wire. */
     @Builder.Default
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private CommunityTopic topic = CommunityTopic.GENERAL;
+    private String topic = "GENERAL";
 
     /** Optional — powers the "Nearby" feed. Set explicitly by the author or inferred from an attached business. */
     @Column(name = "area_id")
@@ -81,8 +89,64 @@ public class CommunityPost {
     @Column(name = "closed_at")
     private Instant closedAt;
 
+    /** Author's own "delete my post" — distinct from a moderator removal (status REMOVED, restorable). */
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    // ---- Moderation state (V56) ----
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CommunityContentStatus status = CommunityContentStatus.ACTIVE;
+
+    /** Why a post is PENDING/HIDDEN (NEW_USER, BANNED_WORD, LINKS, REPORTS) — null otherwise. */
+    @Column(name = "hold_reason", length = 40)
+    private String holdReason;
+
+    @Column(name = "removed_by")
+    private UUID removedBy;
+
+    @Column(name = "removed_reason", columnDefinition = "text")
+    private String removedReason;
+
+    @Column(name = "removed_at")
+    private Instant removedAt;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean locked = false;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean pinned = false;
+
+    /** GLOBAL, TOPIC (pinned within its own topic) or AREA (pinned within its own area's Nearby feed). */
+    @Column(name = "pin_scope", length = 10)
+    private String pinScope;
+
+    @Column(name = "pinned_until")
+    private Instant pinnedUntil;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean featured = false;
+
+    /** "Jachai Team" announcement — see community.moderation.CommunityAnnouncementService. */
+    @Builder.Default
+    @Column(nullable = false)
+    private boolean official = false;
+
+    /** Scheduled announcement window; null = no bound. */
+    @Column(name = "visible_from")
+    private Instant visibleFrom;
+
+    @Column(name = "visible_until")
+    private Instant visibleUntil;
+
+    @Builder.Default
+    @Column(name = "report_count", nullable = false)
+    private int reportCount = 0;
 
     @Version
     private long version;
@@ -108,5 +172,10 @@ public class CommunityPost {
     @Transient
     public int getScore() {
         return upvoteCount - downvoteCount;
+    }
+
+    @Transient
+    public boolean isPinnedNow() {
+        return pinned && (pinnedUntil == null || pinnedUntil.isAfter(Instant.now()));
     }
 }

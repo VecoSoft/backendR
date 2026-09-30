@@ -7,9 +7,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 @Controller
 public class AdminAuthController {
 
+    /** Post-login landing: admins go to the main dashboard, community moderators to their section. */
     @GetMapping("/admin")
-    public String root() {
-        return "redirect:/admin/dashboard";
+    public String root(org.springframework.security.core.Authentication authentication) {
+        boolean admin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        return admin ? "redirect:/admin/dashboard" : "redirect:/admin/community";
     }
 
     @GetMapping("/admin/login")

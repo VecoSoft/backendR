@@ -20,16 +20,25 @@ import java.util.UUID;
 public class OrderController {
 
     private final OrderService orders;
+    private final com.bdreview.platform.promo.PromoEventService promoEvents;
 
-    public OrderController(OrderService orders) {
+    public OrderController(OrderService orders, com.bdreview.platform.promo.PromoEventService promoEvents) {
         this.orders = orders;
+        this.promoEvents = promoEvents;
     }
 
     // ---- customer ----------------------------------------------------
 
     @PostMapping("/businesses/{businessId}/orders")
-    public OrderResponse place(@PathVariable UUID businessId, @Valid @RequestBody PlaceOrderRequest req) {
-        return orders.placeOrder(CurrentUser.id(), businessId, req);
+    public OrderResponse place(@PathVariable UUID businessId, @Valid @RequestBody PlaceOrderRequest req,
+                               // V58 promo attribution — set when the order came from a business post / share link
+                               @RequestParam(required = false) UUID promoPostId,
+                               @RequestParam(required = false) UUID promoBoostId,
+                               @RequestParam(required = false) String promoRef) {
+        OrderResponse order = orders.placeOrder(CurrentUser.id(), businessId, req);
+        promoEvents.recordConversion(new com.bdreview.platform.promo.PromoEventService.Attribution(promoPostId, promoBoostId, promoRef),
+                com.bdreview.platform.promo.PromoEnums.PromoEventType.ORDER, order.id(), businessId);
+        return order;
     }
 
     @GetMapping("/orders/mine")

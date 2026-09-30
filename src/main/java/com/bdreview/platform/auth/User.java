@@ -71,8 +71,23 @@ public class User {
     @Column(name = "preferred_language", nullable = false, length = 10)
     private String preferredLanguage = "en";
 
+    /**
+     * Community staff flag on top of the account type in {@link #role} (V56). Only value today is
+     * {@link #STAFF_MODERATOR} — a moderator keeps their normal CONSUMER/BUSINESS_OWNER account and
+     * just gains access to the admin panel's Community section. ADMIN accounts never need it.
+     */
+    @Column(name = "staff_role", length = 20)
+    private String staffRole;
+
+    /** Set by a moderator's "Approve and trust user" — skips new-user approval and uses the TRUSTED rate-limit tier. */
+    @Builder.Default
+    @Column(name = "community_trusted", nullable = false)
+    private boolean communityTrusted = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    public static final String STAFF_MODERATOR = "MODERATOR";
 
     @PrePersist
     void onCreate() {
@@ -84,5 +99,9 @@ public class User {
         if (this.communityProfileId == null) {
             this.communityProfileId = UUID.randomUUID();
         }
+    }
+
+    public boolean isModerator() {
+        return STAFF_MODERATOR.equals(staffRole);
     }
 }

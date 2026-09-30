@@ -28,9 +28,9 @@ import java.util.UUID;
  */
 public record CreateCommunityPostRequest(
         @Size(max = 150) String title,
-        @NotBlank @Size(max = 5000) String body,
+        @NotBlank @Size(max = 20000) String body,
         @NotNull CommunityPostType postType,
-        @NotNull CommunityTopic topic,
+        @NotNull @Size(max = 20) String topic,
         UUID businessId,
         UUID areaId,
         List<String> pollOptions,

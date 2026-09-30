@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Pending approval - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Pending approval</h1>
+            <p>Held by the new-user rule, banned words (flag mode), link checks, or auto-hidden after reports. Only the author can
+                see these until they're approved.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+    <datalist th:replace="~{admin/community/parts :: reason-datalist}"></datalist>
+
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-3">Posts (<span th:text="${q.posts.size()}">0</span>)</h2>
+        <div th:each="p : ${q.posts}" class="border-bottom py-3">
+            <div class="d-flex justify-content-between gap-3 flex-wrap">
+                <div style="max-width:640px;">
+                    <span th:replace="~{admin/community/parts :: status(${p.status.name()})}"></span>
+                    <span class="badge text-bg-light border" th:text="${p.holdReason}">NEW_USER</span>
+                    <a class="small ms-1" th:href="@{/admin/community/users/{id}(id=${p.authorUserId})}"
+                       th:text="${q.authors[p.authorUserId] != null ? 'u/' + q.authors[p.authorUserId].communityUsername : ''}">u/x</a>
+                    <span class="small text-muted" th:text="${@fmt.dt(p.createdAt)}">date</span>
+                    <div class="fw-semibold mt-1" th:if="${p.title != null}" th:text="${p.title}">title</div>
+                    <div class="small" style="white-space:pre-wrap;" th:text="${p.body}">body</div>
+                    <a class="small" th:href="@{/admin/community/posts/{id}(id=${p.id})}">Open detail</a>
+                </div>
+                <form method="post" th:action="@{/admin/community/posts/{id}/action(id=${p.id})}" style="min-width:300px;">
+                    <input type="hidden" name="back" value="/admin/community/pending"/>
+                    <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm mb-1" placeholder="Reason (required to reject)"/>
+                    <div class="btn-group btn-group-sm w-100">
+                        <button name="action" value="approve" class="btn btn-success">Approve</button>
+                        <button name="action" value="approve-trust" class="btn btn-outline-success">Approve + trust</button>
+                        <button name="action" value="reject" class="btn btn-outline-danger">Reject</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <p th:if="${q.posts.isEmpty()}" class="text-muted small mb-0">No posts waiting.</p>
+    </div>
+
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-3">Comments (<span th:text="${q.comments.size()}">0</span>)</h2>
+        <div th:each="c : ${q.comments}" class="border-bottom py-3">
+            <div class="d-flex justify-content-between gap-3 flex-wrap">
+                <div style="max-width:640px;">
+                    <span th:replace="~{admin/community/parts :: status(${c.status.name()})}"></span>
+                    <span class="badge text-bg-light border" th:text="${c.holdReason}">BANNED_WORD</span>
+                    <a class="small ms-1" th:href="@{/admin/community/users/{id}(id=${c.authorUserId})}"
+                       th:text="${q.authors[c.authorUserId] != null ? 'u/' + q.authors[c.authorUserId].communityUsername : ''}">u/x</a>
+                    <div class="small mt-1" style="white-space:pre-wrap;" th:text="${c.content}">comment</div>
+                    <a class="small" th:href="@{/admin/community/posts/{id}(id=${c.postId})}">Open post</a>
+                </div>
+                <form method="post" th:action="@{/admin/community/comments/{id}/action(id=${c.id})}" style="min-width:300px;">
+                    <input type="hidden" name="back" value="/admin/community/pending"/>
+                    <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm mb-1" placeholder="Reason (required to reject)"/>
+                    <div class="btn-group btn-group-sm w-100">
+                        <button name="action" value="approve" class="btn btn-success">Approve</button>
+                        <button name="action" value="approve-trust" class="btn btn-outline-success">Approve + trust</button>
+                        <button name="action" value="reject" class="btn btn-outline-danger">Reject</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <p th:if="${q.comments.isEmpty()}" class="text-muted small mb-0">No comments waiting.</p>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

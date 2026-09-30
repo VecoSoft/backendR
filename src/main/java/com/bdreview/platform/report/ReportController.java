@@ -1,5 +1,6 @@
 package com.bdreview.platform.report;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.common.CurrentUser;
@@ -28,6 +29,7 @@ public class ReportController {
         return ResponseEntity.ok(reportService.create(CurrentUser.id(), request));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/queue")
     public ResponseEntity<PageResponse<ReportResponse>> queue(
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
@@ -38,6 +40,7 @@ public class ReportController {
         return ResponseEntity.ok(PageResponse.of(results));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<Void> resolve(@PathVariable UUID id, @Valid @RequestBody ResolveReportRequest request) {
         reportService.resolve(id, request.outcome(), request.resolutionNote());

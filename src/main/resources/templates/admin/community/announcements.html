@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Announcements - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Announcements</h1>
+            <p>Pinned “Jachai Team” posts with the official badge — for everyone, one area or one topic, optionally scheduled, optionally with a site-wide community banner.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="post" th:action="@{/admin/community/announcements}" class="admin-card">
+        <h2 class="h6 fw-bold mb-3">New announcement</h2>
+        <div class="row g-2">
+            <div class="col-md-8"><label class="form-label small">Title</label>
+                <input type="text" name="title" maxlength="150" class="form-control form-control-sm" required/></div>
+            <div class="col-md-4"><label class="form-label small">Audience</label>
+                <select name="scope" class="form-select form-select-sm" id="scopeSel">
+                    <option value="ALL">Everyone</option>
+                    <option value="AREA">One area</option>
+                    <option value="TOPIC">One topic</option>
+                </select></div>
+            <div class="col-12"><label class="form-label small">Text (markdown)</label>
+                <textarea name="body" rows="5" class="form-control form-control-sm" required></textarea></div>
+            <div class="col-md-4"><label class="form-label small">Area (for “One area”)</label>
+                <select name="areaId" class="form-select form-select-sm">
+                    <option value="">—</option>
+                    <option th:each="a : ${areas}" th:value="${a.id}" th:text="${a.name + ', ' + a.city.name}">A</option>
+                </select></div>
+            <div class="col-md-4"><label class="form-label small">Topic (for “One topic”)</label>
+                <select name="topic" class="form-select form-select-sm">
+                    <option value="">—</option>
+                    <option th:each="t : ${topics}" th:value="${t.code}" th:text="${t.label}">T</option>
+                </select></div>
+            <div class="col-md-2"><label class="form-label small">Starts</label>
+                <input type="datetime-local" name="startsAt" class="form-control form-control-sm"/></div>
+            <div class="col-md-2"><label class="form-label small">Ends</label>
+                <input type="datetime-local" name="endsAt" class="form-control form-control-sm"/></div>
+            <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="showBanner" value="true" id="aBanner"/>
+                    <label class="form-check-label small" for="aBanner">Also show a dismissible banner</label></div>
+            </div>
+            <div class="col-md-9"><label class="form-label small">Banner text (optional — defaults to the title)</label>
+                <input type="text" name="bannerText" maxlength="280" class="form-control form-control-sm"/></div>
+            <div class="col-12"><button class="btn btn-sm btn-primary"><i class="bi bi-megaphone"></i> Publish</button></div>
+        </div>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Announcement</th><th>Audience</th><th>Window</th><th>Banner</th><th>State</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="v : ${items}">
+                <td><a th:href="@{/admin/community/posts/{id}(id=${v.post.id})}" th:text="${v.post.title}">title</a></td>
+                <td class="small" th:text="${v.announcement.targetScope} + (${v.announcement.targetTopic} != null ? ' · ' + ${v.announcement.targetTopic} : '')">ALL</td>
+                <td class="small" th:text="${@fmt.dt(v.announcement.startsAt)} + ' → ' + ${@fmt.dt(v.announcement.endsAt)}">-</td>
+                <td class="small" th:text="${v.announcement.showBanner} ? 'Yes' : 'No'">No</td>
+                <td><span class="badge" th:classappend="${v.live} ? 'text-bg-success' : 'text-bg-secondary'" th:text="${v.live} ? 'LIVE' : 'NOT LIVE'">LIVE</span></td>
+                <td class="text-end">
+                    <form th:if="${v.live || v.announcement.endsAt == null}" method="post" th:action="@{/admin/community/announcements/{id}/end(id=${v.announcement.id})}">
+                        <button class="btn btn-sm btn-outline-danger">End now</button>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${items.isEmpty()}"><td colspan="6" class="admin-table-empty">No announcements yet.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

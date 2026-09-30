@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community overview - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community overview</h1>
+            <p>Activity, open reports and anything that needs a moderator's attention.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-stat-grid">
+        <a th:href="@{/admin/community/posts}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon info"><i class="bi bi-file-text"></i></div>
+            <div>
+                <div class="admin-stat-value"><span th:text="${d.stats.postsToday}">0</span>
+                    <small class="text-muted fs-6">/ <span th:text="${d.stats.posts7d}">0</span> 7d</small></div>
+                <div class="admin-stat-label">Posts today</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/comments}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon info"><i class="bi bi-chat-left-text"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.commentsToday}">0</div>
+                <div class="admin-stat-label">Comments today</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/reports}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon warn"><i class="bi bi-flag"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.openReports}">0</div>
+                <div class="admin-stat-label">Open reports</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/pending}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon warn"><i class="bi bi-hourglass-split"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.pendingApprovals}">0</div>
+                <div class="admin-stat-label">Pending approval</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/posts(status='REMOVED')}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon danger"><i class="bi bi-trash3"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.removedToday}">0</div>
+                <div class="admin-stat-label">Removed today</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/users}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon ok"><i class="bi bi-person-plus"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.newCommunityUsers7d}">0</div>
+                <div class="admin-stat-label">New members (7d)</div>
+            </div>
+        </a>
+        <a th:href="@{/admin/community/users(status='MUTE')}" class="admin-stat-card text-decoration-none text-reset">
+            <div class="admin-stat-icon danger"><i class="bi bi-slash-circle"></i></div>
+            <div>
+                <div class="admin-stat-value" th:text="${d.stats.activeRestrictions}">0</div>
+                <div class="admin-stat-label">Active restrictions</div>
+            </div>
+        </a>
+    </div>
+
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-3">Last 30 days</h2>
+        <div style="position:relative; height:260px;">
+            <canvas id="communityChart" aria-label="Posts, comments and reports per day for the last 30 days" role="img"></canvas>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="admin-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="h6 fw-bold mb-0">Newest open reports</h2>
+                    <a th:href="@{/admin/community/reports}" class="small">Queue →</a>
+                </div>
+                <ul class="list-unstyled mb-0 small">
+                    <li th:each="g : ${d.newestReports}" class="py-2 border-bottom">
+                        <span class="badge text-bg-secondary" th:text="${g.targetType.replace('COMMUNITY_', '')}">POST</span>
+                        <span class="badge text-bg-warning" th:text="${g.openCount} + ' report(s)'">1</span>
+                        <div class="mt-1" th:text="${g.preview}">preview</div>
+                        <a th:if="${g.postId != null}" th:href="@{/admin/community/posts/{id}(id=${g.postId})}" class="small">Open</a>
+                    </li>
+                    <li th:if="${d.newestReports.isEmpty()}" class="text-muted py-2">No open reports.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="admin-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h2 class="h6 fw-bold mb-0">Held / auto-flagged</h2>
+                    <a th:href="@{/admin/community/pending}" class="small">Queue →</a>
+                </div>
+                <ul class="list-unstyled mb-0 small">
+                    <li th:each="p : ${d.autoFlagged}" class="py-2 border-bottom">
+                        <span th:replace="~{admin/community/parts :: status(${p.status.name()})}"></span>
+                        <span class="text-muted" th:text="${p.holdReason}">NEW_USER</span>
+                        <div class="mt-1"><a th:href="@{/admin/community/posts/{id}(id=${p.id})}"
+                                             th:text="${p.title != null ? p.title : (p.body != null && p.body.length() > 90 ? p.body.substring(0, 90) + '…' : p.body)}">post</a></div>
+                    </li>
+                    <li th:if="${d.autoFlagged.isEmpty()}" class="text-muted py-2">Nothing waiting.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="admin-card h-100">
+                <h2 class="h6 fw-bold mb-2">Heavily downvoted</h2>
+                <ul class="list-unstyled mb-0 small">
+                    <li th:each="p : ${d.heavilyDownvoted}" class="py-2 border-bottom">
+                        <span class="badge text-bg-danger" th:text="'▼ ' + ${p.downvoteCount}">▼ 9</span>
+                        <span class="badge text-bg-success" th:text="'▲ ' + ${p.upvoteCount}">▲ 1</span>
+                        <div class="mt-1"><a th:href="@{/admin/community/posts/{id}(id=${p.id})}"
+                                             th:text="${p.title != null ? p.title : (p.body != null && p.body.length() > 90 ? p.body.substring(0, 90) + '…' : p.body)}">post</a></div>
+                    </li>
+                    <li th:if="${d.heavilyDownvoted.isEmpty()}" class="text-muted py-2">Nothing heavily downvoted.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script th:inline="javascript">
+    (function () {
+        const series = /*[[${d.last30Days}]]*/ [];
+        const ctx = document.getElementById('communityChart');
+        if (!ctx || typeof Chart === 'undefined') return;
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: series.map(p => p.day.substring(5)),
+                datasets: [
+                    {label: 'Posts', data: series.map(p => p.posts), borderColor: '#2a78d6', backgroundColor: '#2a78d6', tension: .25, pointRadius: 2},
+                    {label: 'Comments', data: series.map(p => p.comments), borderColor: '#1f9e6e', backgroundColor: '#1f9e6e', tension: .25, pointRadius: 2},
+                    {label: 'Reports', data: series.map(p => p.reports), borderColor: '#d64545', backgroundColor: '#d64545', tension: .25, pointRadius: 2}
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: {mode: 'index', intersect: false},
+                plugins: {legend: {position: 'bottom', labels: {boxWidth: 10}}},
+                scales: {y: {beginAtZero: true, ticks: {precision: 0}}, x: {grid: {display: false}}}
+            }
+        });
+    })();
+</script>
+</body>
+</html>

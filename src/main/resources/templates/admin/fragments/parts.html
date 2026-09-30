@@ -44,11 +44,67 @@
 <!-- ============================================================= -->
 <nav th:fragment="sidebar(active)" class="admin-sidebar">
     <ul class="admin-nav">
-        <li>
+        <li th:if="${isAdminUser}">
             <a th:href="@{/admin/dashboard}" th:classappend="${active == 'dashboard'} ? 'active'">
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
         </li>
+        <!-- Community (V56) — ADMIN + MODERATOR; the ADMIN-only items are hidden for moderators
+             and blocked server-side as well (AdminSecurityConfig + @PreAuthorize). -->
+        <li class="admin-nav-section">Community</li>
+        <li>
+            <a th:href="@{/admin/community}" th:classappend="${active == 'c-dashboard'} ? 'active'">
+                <i class="bi bi-activity"></i> Overview
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/community/posts}" th:classappend="${active == 'c-posts'} ? 'active'">
+                <i class="bi bi-file-text"></i> Posts
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/community/comments}" th:classappend="${active == 'c-comments'} ? 'active'">
+                <i class="bi bi-chat-left-text"></i> Comments
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/community/reports}" th:classappend="${active == 'c-reports'} ? 'active'">
+                <i class="bi bi-flag"></i> Reports
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/community/pending}" th:classappend="${active == 'c-pending'} ? 'active'">
+                <i class="bi bi-hourglass-split"></i> Pending approval
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/community/users}" th:classappend="${active == 'c-users'} ? 'active'">
+                <i class="bi bi-person-badge"></i> Members
+            </a>
+        </li>
+        <th:block th:if="${isAdminUser}">
+            <li>
+                <a th:href="@{/admin/community/announcements}" th:classappend="${active == 'c-announcements'} ? 'active'">
+                    <i class="bi bi-megaphone"></i> Announcements
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/community/settings}" th:classappend="${active == 'c-settings'} ? 'active'">
+                    <i class="bi bi-sliders"></i> Settings &amp; topics
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/community/roles}" th:classappend="${active == 'c-roles'} ? 'active'">
+                    <i class="bi bi-shield-lock"></i> Moderators
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/community/audit}" th:classappend="${active == 'c-audit'} ? 'active'">
+                    <i class="bi bi-journal-text"></i> Community audit
+                </a>
+            </li>
+        </th:block>
+        <th:block th:if="${isAdminUser}">
         <li class="admin-nav-section">Catalog</li>
         <li>
             <a th:href="@{/admin/businesses}" th:classappend="${active == 'businesses'} ? 'active'">
@@ -88,6 +144,8 @@
                 <i class="bi bi-clock-history"></i> Audit Log
             </a>
         </li>
+        <!-- NID verification is feature-flagged (off by default); it has no admin page while off. -->
+        </th:block>
     </ul>
 </nav>
 

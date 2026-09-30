@@ -29,6 +29,10 @@ public class CommunityPostComment {
     @Column(name = "author_user_id", nullable = false)
     private UUID authorUserId;
 
+    /** V58: a business replying as itself — only ever on that business's own posts. */
+    @Column(name = "author_business_id")
+    private UUID authorBusinessId;
+
     /** Null for a top-level comment on the post itself. */
     @Column(name = "parent_comment_id")
     private UUID parentCommentId;
@@ -59,6 +63,29 @@ public class CommunityPostComment {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    // ---- Moderation state (V56) — same shape as CommunityPost ----
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CommunityContentStatus status = CommunityContentStatus.ACTIVE;
+
+    @Column(name = "hold_reason", length = 40)
+    private String holdReason;
+
+    @Column(name = "removed_by")
+    private UUID removedBy;
+
+    @Column(name = "removed_reason", columnDefinition = "text")
+    private String removedReason;
+
+    @Column(name = "removed_at")
+    private Instant removedAt;
+
+    @Builder.Default
+    @Column(name = "report_count", nullable = false)
+    private int reportCount = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

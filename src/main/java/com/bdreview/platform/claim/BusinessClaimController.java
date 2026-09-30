@@ -1,5 +1,6 @@
 package com.bdreview.platform.claim;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.common.CurrentUser;
@@ -59,6 +60,7 @@ public class BusinessClaimController {
         return ResponseEntity.ok(claimService.fileClaim(CurrentUser.id(), request));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}/document")
     public ResponseEntity<byte[]> document(@PathVariable UUID id) {
         ClaimDocument document = claimService.getDocument(id);
@@ -72,6 +74,7 @@ public class BusinessClaimController {
         return ResponseEntity.ok(claimService.myClaims(CurrentUser.id()));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/queue")
     public ResponseEntity<PageResponse<BusinessClaimResponse>> queue(
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
@@ -82,6 +85,7 @@ public class BusinessClaimController {
         return ResponseEntity.ok(PageResponse.of(results));
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<BusinessClaim> resolve(@PathVariable UUID id, @Valid @RequestBody ResolveClaimRequest request) {
         return ResponseEntity.ok(claimService.resolve(id, request));

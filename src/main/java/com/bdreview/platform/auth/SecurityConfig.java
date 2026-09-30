@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -19,6 +20,9 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+// V56: @PreAuthorize on every admin endpoint (JWT API + Thymeleaf admin controllers) — server-side
+// role checks in addition to the URL rules below.
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -68,9 +72,17 @@ public class SecurityConfig {
                         // business page "Overall rating" bar chart — aggregate counts, no review
                         // content, safe to show even while the review list itself stays auth-gated
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/reviews/business/*/rating-breakdown").permitAll()
+                        // V56: identity documents are never public. NID images (NID verification is
+                        // feature-flagged off) and business-claim documents are ADMIN-only; before V56
+                        // anyone holding the object URL could fetch them through the wildcard below.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/storage/files/nid/**", "/api/v1/storage/files/claim-document/**").hasRole("ADMIN")
                         // pre-signed upload URLs (§13) are bare fetch() PUTs with no Authorization
                         // header — the URL itself (unguessable object key) is the auth boundary
                         .requestMatchers("/api/v1/storage/**").permitAll()
+                        // V56: every /api/v1/admin/** endpoint needs a staff role at the URL level;
+                        // controllers narrow it further with @PreAuthorize (settings/roles/reveal = ADMIN).
+                        .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "MODERATOR")
                         // Phase 3 — fire-and-forget page-interaction tracking (sendBeacon has no auth
                         // header). Payload is a fixed enum + an opaque session id; nothing sensitive.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/businesses/*/events").permitAll()
@@ -85,6 +97,12 @@ public class SecurityConfig {
                         // GET /offers, /offers/{id}, and /offers/business/{id}).
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/offers", "/api/v1/offers/*", "/api/v1/offers/business/*").permitAll()
+                        // V58 promotion — public share pages, creative render data and the
+                        // sponsored carousel are readable by anyone; the analytics beacon is a
+                        // sendBeacon POST without an auth header (opaque session id, no user data).
+                        // Every other /api/v1/promo/** (owner tools) stays behind authenticated().
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/promo/public/**").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/promo/public/events").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

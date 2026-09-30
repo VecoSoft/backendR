@@ -1,5 +1,6 @@
 package com.bdreview.platform.moderation;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.PageResponse;
@@ -13,6 +14,7 @@ import java.util.UUID;
 /** Spec §12 basic admin dashboard: combined view over reports/flagged-reviews + audit trail. */
 @RestController
 @RequestMapping("/api/v1/admin/moderation")
+@PreAuthorize("hasRole('ADMIN')")
 public class ModerationController {
 
     private final ModerationService moderationService;

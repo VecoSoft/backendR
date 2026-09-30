@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Community posts - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Community posts</h1>
+            <p>Search, filter and moderate posts. Removal is always soft and can be restored.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="get" th:action="@{/admin/community/posts}" class="admin-card">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Search</label>
+                <input type="text" name="q" class="form-control form-control-sm" th:value="${f.q}" placeholder="Text, username or post id"/>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">Type</label>
+                <select name="type" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="t : ${ {'DISCUSSION','QUESTION','RECOMMENDATION','POLL'} }" th:value="${t}"
+                            th:text="${t == 'RECOMMENDATION' ? 'REVIEW' : t}" th:selected="${f.type == t}">T</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">Topic</label>
+                <select name="topic" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="t : ${topics}" th:value="${t.code}" th:text="${t.label}" th:selected="${f.topic == t.code}">T</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">Area</label>
+                <select name="areaId" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="a : ${areas}" th:value="${a.id}" th:text="${a.name + ', ' + a.city.name}"
+                            th:selected="${f.areaId == a.id}">A</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option th:each="s : ${ {'ACTIVE','HIDDEN','REMOVED','PENDING','LOCKED','PINNED','FEATURED','OFFICIAL'} }"
+                            th:value="${s}" th:text="${s}" th:selected="${f.status == s}">S</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">From</label>
+                <input type="date" name="from" class="form-control form-control-sm" th:value="${f.from}"/>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">To</label>
+                <input type="date" name="to" class="form-control form-control-sm" th:value="${f.to}"/>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label small">Sort</label>
+                <select name="sort" class="form-select form-select-sm">
+                    <option value="newest" th:selected="${f.sort == null || f.sort == 'newest'}">Newest</option>
+                    <option value="oldest" th:selected="${f.sort == 'oldest'}">Oldest</option>
+                    <option value="reported" th:selected="${f.sort == 'reported'}">Most reported</option>
+                    <option value="voted" th:selected="${f.sort == 'voted'}">Most voted</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-3">
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="reported" value="true" id="fReported" th:checked="${f.reported}"/>
+                    <label class="form-check-label small" for="fReported">Reported</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" name="hasImages" value="true" id="fImages" th:checked="${f.hasImages}"/>
+                    <label class="form-check-label small" for="fImages">Has images</label></div>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filter</button>
+                <a th:href="@{/admin/community/posts}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </div>
+        </div>
+    </form>
+
+    <form id="bulkForm" method="post" th:action="@{/admin/community/posts/bulk}">
+        <input type="hidden" name="back" th:value="${currentUrl}"/>
+        <div class="admin-toolbar d-flex flex-wrap gap-2 align-items-center mb-2">
+            <select name="action" class="form-select form-select-sm" style="max-width:200px;" required>
+                <option value="">Bulk action…</option>
+                <option value="HIDE">Hide</option>
+                <option value="REMOVE">Remove</option>
+                <option value="RESTORE">Restore</option>
+                <option value="LOCK">Lock comments</option>
+                <option value="UNLOCK">Unlock comments</option>
+                <option value="FEATURE">Feature</option>
+                <option value="UNFEATURE">Unfeature</option>
+                <option value="UNPIN">Unpin</option>
+                <option value="APPROVE">Approve (pending)</option>
+            </select>
+            <input type="text" name="reason" list="reasonTemplates" class="form-control form-control-sm" style="max-width:320px;"
+                   placeholder="Reason (required for hide/remove)"/>
+            <button type="submit" class="btn btn-sm btn-outline-dark">Apply to selected</button>
+        </div>
+
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                <tr>
+                    <th><input type="checkbox" class="form-check-input" id="selectAll" aria-label="Select all"/></th>
+                    <th>Post</th>
+                    <th>Author</th>
+                    <th>Type / topic</th>
+                    <th>Status</th>
+                    <th class="text-end">▲ / ▼</th>
+                    <th class="text-end">Comments</th>
+                    <th class="text-end">Reports</th>
+                    <th>Created</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="p : ${results.content}">
+                    <td><input type="checkbox" class="form-check-input row-check" name="ids" th:value="${p.id}" aria-label="Select post"/></td>
+                    <td style="max-width:360px;">
+                        <a th:href="@{/admin/community/posts/{id}(id=${p.id})}" class="fw-semibold"
+                           th:text="${p.title != null ? p.title : (p.body != null && p.body.length() > 110 ? p.body.substring(0, 110) + '…' : (p.body ?: '(no text)'))}">post</a>
+                        <div class="small text-muted text-mono" th:text="${p.id}">id</div>
+                    </td>
+                    <td>
+                        <span th:if="${p.official}" class="badge text-bg-primary">Jachai Team</span>
+                        <a th:unless="${p.official}" th:href="@{/admin/community/users/{id}(id=${p.authorUserId})}"
+                           th:text="${authors[p.authorUserId] != null && authors[p.authorUserId].communityUsername != null ? 'u/' + authors[p.authorUserId].communityUsername : '[no username]'}">u/x</a>
+                    </td>
+                    <td class="small">
+                        <div th:text="${p.postType.name() == 'RECOMMENDATION' ? 'REVIEW' : p.postType}">TYPE</div>
+                        <div class="text-muted" th:text="${p.topic}">TOPIC</div>
+                    </td>
+                    <td>
+                        <span th:replace="~{admin/community/parts :: status(${p.status.name()})}"></span>
+                        <span th:if="${p.locked}" class="badge text-bg-secondary" title="Comments locked"><i class="bi bi-lock"></i></span>
+                        <span th:if="${p.pinned}" class="badge text-bg-info" th:title="${p.pinScope}"><i class="bi bi-pin-angle"></i></span>
+                        <span th:if="${p.featured}" class="badge text-bg-warning"><i class="bi bi-star-fill"></i></span>
+                    </td>
+                    <td class="text-end text-mono" th:text="${p.upvoteCount} + ' / ' + ${p.downvoteCount}">0 / 0</td>
+                    <td class="text-end text-mono" th:text="${p.commentCount}">0</td>
+                    <td class="text-end text-mono" th:classappend="${p.reportCount > 0} ? 'text-danger fw-bold'" th:text="${p.reportCount}">0</td>
+                    <td class="text-mono small" th:text="${@fmt.dt(p.createdAt)}">-</td>
+                </tr>
+                <tr th:if="${results.content.isEmpty()}">
+                    <td colspan="9" class="admin-table-empty">No posts match these filters.</td>
+                </tr>
+                </tbody>
+            </table>
+            <div th:replace="~{admin/community/parts :: pager(${results})}"></div>
+        </div>
+    </form>
+    <datalist th:replace="~{admin/community/parts :: reason-datalist}"></datalist>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script>
+    document.getElementById('selectAll')?.addEventListener('change', e => {
+        document.querySelectorAll('.row-check').forEach(c => c.checked = e.target.checked);
+    });
+</script>
+</body>
+</html>
