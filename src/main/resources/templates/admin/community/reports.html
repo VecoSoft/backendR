@@ -35,6 +35,8 @@
             <tr th:each="g : ${results.content}">
                 <td style="max-width:320px;">
                     <span class="badge text-bg-secondary" th:text="${g.targetType.replace('COMMUNITY_', '')}">POST</span>
+                    <span th:if="${g.postId != null && promoTags[g.postId] == 'SPONSORED'}" class="badge text-bg-warning">Sponsored</span>
+                    <span th:if="${g.postId != null && promoTags[g.postId] == 'BUSINESS'}" class="badge text-bg-dark">Business</span>
                     <th:block th:if="${g.contentStatus != null && g.contentStatus != 'PROFILE'}">
                         <span th:replace="~{admin/community/parts :: status(${g.contentStatus})}"></span>
                     </th:block>

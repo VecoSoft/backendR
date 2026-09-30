@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Promotion queues - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Promotion review queues</h1>
+            <p>Business posts waiting for approval, boost payments to verify, and paid boosts waiting for review.
+                Promotion never changes reviews, ratings, search order, verification or trust — only these paid,
+                clearly labelled placements.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <!-- 1. Business posts pending review -->
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-3">Business posts pending review (<span th:text="${pendingPosts.size()}">0</span>)</h2>
+        <div th:each="p : ${pendingPosts}" class="border-bottom py-3">
+            <div class="d-flex justify-content-between gap-3 flex-wrap">
+                <div class="d-flex gap-3" style="max-width:680px;">
+                    <img th:if="${p.squareUrl != null}" th:src="${p.squareUrl}" alt="" width="96" height="96" class="rounded border" style="object-fit:cover;"/>
+                    <div>
+                        <span class="badge text-bg-dark">Business</span>
+                        <span class="badge text-bg-light border" th:text="${p.type}">OFFER</span>
+                        <strong class="ms-1" th:text="${p.businessName}">Business</strong>
+                        <span class="small text-muted ms-1" th:text="${@fmt.dt(p.createdAt)}">date</span>
+                        <div class="fw-semibold mt-1" th:if="${p.title != null}" th:text="${p.title}">title</div>
+                        <div class="small" style="white-space:pre-wrap;" th:text="${p.body}">body</div>
+                        <a class="small" th:href="@{/admin/community/posts/{id}(id=${p.postId})}">Open in community admin</a>
+                    </div>
+                </div>
+                <div style="min-width:300px;">
+                    <form method="post" th:action="@{/admin/promotions/posts/{id}/approve(id=${p.postId})}" class="mb-1">
+                        <button class="btn btn-success btn-sm w-100">Approve</button>
+                    </form>
+                    <form method="post" th:action="@{/admin/promotions/posts/{id}/reject(id=${p.postId})}">
+                        <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Reason (required, shown to the owner)" required/>
+                        <button class="btn btn-outline-danger btn-sm w-100">Reject</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <p th:if="${pendingPosts.isEmpty()}" class="text-muted small mb-0">No business posts waiting.</p>
+    </div>
+
+    <!-- 2. Boost payments to verify (ADMIN) -->
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-1">Boost payments to verify (<span th:text="${pendingPayment.size()}">0</span>)</h2>
+        <p class="small text-muted">Check each transaction in the bKash/Nagad merchant app before verifying.
+            <span th:text="${awaitingPayment}">0</span> more boost(s) are still waiting for the owner to pay.</p>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Business</th><th>Package</th><th>Amount due</th><th>Method / Trx ID</th><th>Submitted</th><th th:if="${isAdminUser}" style="min-width:300px;">Action</th></tr></thead>
+                <tbody>
+                <tr th:each="b : ${pendingPayment}">
+                    <td th:text="${b.businessName}">Business</td>
+                    <td th:text="${b.packageName}">Standard</td>
+                    <td class="text-mono" th:text="'৳' + ${b.priceBdt}">৳500</td>
+                    <td><span class="badge text-bg-light border" th:text="${b.paymentMethod}">BKASH</span>
+                        <code th:text="${b.paymentRef}">TRX</code></td>
+                    <td class="small" th:text="${@fmt.dt(b.paymentSubmittedAt)}">-</td>
+                    <td th:if="${isAdminUser}">
+                        <form method="post" th:action="@{/admin/promotions/boosts/{id}/verify-payment(id=${b.id})}" class="d-flex gap-1 mb-1">
+                            <input type="number" step="0.01" min="0" name="paidAmount" class="form-control form-control-sm" th:value="${b.priceBdt}" title="Amount received"/>
+                            <button class="btn btn-success btn-sm text-nowrap">Verify</button>
+                        </form>
+                        <form method="post" th:action="@{/admin/promotions/boosts/{id}/reject-payment(id=${b.id})}" class="d-flex gap-1">
+                            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required/>
+                            <button class="btn btn-outline-danger btn-sm">Reject</button>
+                        </form>
+                    </td>
+                </tr>
+                <tr th:if="${pendingPayment.isEmpty()}"><td colspan="6" class="text-muted small">Nothing to verify.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 3. Paid boosts pending review -->
+    <div class="admin-card">
+        <h2 class="h6 fw-bold mb-3">Paid boosts pending review (<span th:text="${pendingReview.size()}">0</span>)</h2>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr><th>Business</th><th>Post</th><th>Package</th><th>Targeting</th><th>Window</th><th style="min-width:300px;">Action</th></tr></thead>
+                <tbody>
+                <tr th:each="b : ${pendingReview}">
+                    <td th:text="${b.businessName}">Business</td>
+                    <td><a th:href="@{/admin/community/posts/{id}(id=${b.postId})}">Open post</a></td>
+                    <td th:text="${b.packageName + ' · ' + b.estImpressions + ' impr.'}">Standard</td>
+                    <td class="small">
+                        <span th:if="${b.radiusKm != null}" th:text="${'Within ' + b.radiusKm + ' km of the business'}">5 km</span>
+                        <span th:unless="${b.radiusKm != null}" th:text="${#strings.listJoin(b.targetAreaNames, ', ')}">Mirpur</span>
+                    </td>
+                    <td class="small">
+                        <div th:text="${@fmt.dt(b.startAt)}">start</div>
+                        <div class="text-muted" th:text="${@fmt.dt(b.endAt)}">end</div>
+                    </td>
+                    <td>
+                        <form method="post" th:action="@{/admin/promotions/boosts/{id}/approve(id=${b.id})}" class="mb-1">
+                            <button class="btn btn-success btn-sm w-100">Approve — go live</button>
+                        </form>
+                        <form method="post" th:action="@{/admin/promotions/boosts/{id}/reject(id=${b.id})}" class="d-flex gap-1">
+                            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (refund is then due)" required/>
+                            <button class="btn btn-outline-danger btn-sm">Reject</button>
+                        </form>
+                    </td>
+                </tr>
+                <tr th:if="${pendingReview.isEmpty()}"><td colspan="6" class="text-muted small">Nothing waiting.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

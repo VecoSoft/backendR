@@ -104,6 +104,45 @@
                 </a>
             </li>
         </th:block>
+        <!-- Promotions (V58) — queues + live boosts for ADMIN and MODERATOR; the rest ADMIN only. -->
+        <li class="admin-nav-section">Promotions</li>
+        <li>
+            <a th:href="@{/admin/promotions}" th:classappend="${active == 'p-queues'} ? 'active'">
+                <i class="bi bi-inboxes"></i> Review queues
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/promotions/boosts}" th:classappend="${active == 'p-boosts'} ? 'active'">
+                <i class="bi bi-rocket-takeoff"></i> Live boosts
+            </a>
+        </li>
+        <th:block th:if="${isAdminUser}">
+            <li>
+                <a th:href="@{/admin/promotions/settings}" th:classappend="${active == 'p-settings'} ? 'active'">
+                    <i class="bi bi-sliders"></i> Promotion settings
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/promotions/templates}" th:classappend="${active == 'p-templates'} ? 'active'">
+                    <i class="bi bi-palette"></i> Templates
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/promotions/packages}" th:classappend="${active == 'p-packages'} ? 'active'">
+                    <i class="bi bi-box-seam"></i> Boost packages
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/promotions/restrictions}" th:classappend="${active == 'p-restrictions'} ? 'active'">
+                    <i class="bi bi-slash-circle"></i> Restrictions
+                </a>
+            </li>
+            <li>
+                <a th:href="@{/admin/promotions/revenue}" th:classappend="${active == 'p-revenue'} ? 'active'">
+                    <i class="bi bi-cash-coin"></i> Revenue
+                </a>
+            </li>
+        </th:block>
         <th:block th:if="${isAdminUser}">
         <li class="admin-nav-section">Catalog</li>
         <li>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Boosts - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Boosts</h1>
+            <p>Live and paused boosts by default. Pause and end are available to moderators; refunds and
+                re-targeting are admin only. Every action is audit-logged.</p>
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a th:href="@{/admin/promotions/boosts}" class="btn" th:classappend="${status == null || status == ''} ? 'btn-dark' : 'btn-outline-dark'">Live</a>
+            <a th:href="@{/admin/promotions/boosts(status='ENDED')}" class="btn" th:classappend="${status == 'ENDED'} ? 'btn-dark' : 'btn-outline-dark'">Ended</a>
+            <a th:href="@{/admin/promotions/boosts(status='REJECTED')}" class="btn" th:classappend="${status == 'REJECTED'} ? 'btn-dark' : 'btn-outline-dark'">Rejected</a>
+            <a th:href="@{/admin/promotions/boosts(status='REFUNDED')}" class="btn" th:classappend="${status == 'REFUNDED'} ? 'btn-dark' : 'btn-outline-dark'">Refunded</a>
+            <a th:href="@{/admin/promotions/boosts(status='ALL')}" class="btn" th:classappend="${status == 'ALL'} ? 'btn-dark' : 'btn-outline-dark'">All</a>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Business / post</th><th>Status</th><th>Delivery</th><th>Targeting</th><th>Window</th><th>Paid</th><th style="min-width:320px;">Actions</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="b : ${boosts}">
+                <td>
+                    <div class="fw-semibold" th:text="${b.businessName}">Business</div>
+                    <a class="small" th:href="@{/admin/community/posts/{id}(id=${b.postId})}">Open post</a>
+                    <div class="small text-muted" th:text="${b.packageName}">Standard</div>
+                </td>
+                <td><span class="badge" th:classappend="${b.status.name() == 'ACTIVE'} ? 'text-bg-success' : (${b.status.name() == 'PAUSED'} ? 'text-bg-warning' : 'text-bg-secondary')"
+                          th:text="${b.status}">ACTIVE</span>
+                    <div class="small text-danger" th:if="${b.rejectionReason != null}" th:text="${b.rejectionReason}"></div>
+                    <div class="small text-danger" th:if="${b.refundReason != null}" th:text="${'Refund: ' + b.refundReason}"></div>
+                </td>
+                <td class="small text-mono">
+                    <span th:text="${b.impressionsServed}">0</span> / <span th:text="${b.estImpressions}">0</span>
+                </td>
+                <td class="small">
+                    <span th:if="${b.radiusKm != null}" th:text="${b.radiusKm + ' km radius'}">5 km</span>
+                    <span th:unless="${b.radiusKm != null}" th:text="${#strings.listJoin(b.targetAreaNames, ', ')}">Mirpur</span>
+                </td>
+                <td class="small">
+                    <div th:text="${@fmt.dt(b.startAt)}">start</div>
+                    <div class="text-muted" th:text="${@fmt.dt(b.endAt)}">end</div>
+                </td>
+                <td class="small text-mono">
+                    <span th:if="${b.paidAmount != null}" th:text="'৳' + ${b.paidAmount}">৳500</span>
+                    <div th:if="${b.paymentRef != null}"><code th:text="${b.paymentRef}">TRX</code></div>
+                </td>
+                <td>
+                    <form method="post" th:action="@{/admin/promotions/boosts/{id}/action(id=${b.id})}" class="d-flex flex-column gap-1">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required to end / refund)"/>
+                        <div class="btn-group btn-group-sm">
+                            <button th:if="${b.status.name() == 'ACTIVE'}" name="action" value="pause" class="btn btn-outline-warning">Pause</button>
+                            <button th:if="${b.status.name() == 'PAUSED'}" name="action" value="resume" class="btn btn-outline-success">Resume</button>
+                            <button th:if="${b.status.name() == 'ACTIVE' || b.status.name() == 'PAUSED'}" name="action" value="end" class="btn btn-outline-dark">End</button>
+                            <button th:if="${isAdminUser && b.paymentVerifiedAt != null && b.status.name() != 'REFUNDED'}" name="action" value="refund"
+                                    class="btn btn-outline-danger" onclick="return confirm('Refund this boost? It stops serving immediately.');">Refund</button>
+                        </div>
+                    </form>
+                    <details th:if="${isAdminUser && (b.status.name() == 'ACTIVE' || b.status.name() == 'PAUSED' || b.status.name() == 'PENDING_REVIEW')}" class="mt-1">
+                        <summary class="small">Change targeting</summary>
+                        <form method="post" th:action="@{/admin/promotions/boosts/{id}/targeting(id=${b.id})}" class="mt-1">
+                            <select name="areaIds" multiple size="4" class="form-select form-select-sm mb-1">
+                                <option th:each="a : ${areas}" th:value="${a.id}" th:text="${a.name + ', ' + a.city.name}"
+                                        th:selected="${b.targetAreaIds.contains(a.id)}">Area</option>
+                            </select>
+                            <div class="d-flex gap-1">
+                                <select name="radiusKm" class="form-select form-select-sm" title="Used only when no area is selected">
+                                    <option value="">— or radius —</option>
+                                    <option value="2" th:selected="${b.radiusKm == 2}">2 km</option>
+                                    <option value="5" th:selected="${b.radiusKm == 5}">5 km</option>
+                                    <option value="10" th:selected="${b.radiusKm == 10}">10 km</option>
+                                </select>
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason"/>
+                                <button class="btn btn-sm btn-outline-primary">Save</button>
+                            </div>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+            <tr th:if="${boosts.isEmpty()}"><td colspan="7" class="text-muted small">No boosts here.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

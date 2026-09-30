@@ -254,6 +254,25 @@ public class PromoAdminService {
                 r.getReason(), r.getEndsAt(), r.getCreatedAt())).toList();
     }
 
+    // ---- Tags for the community reports queue ----
+
+    /** Post id → "SPONSORED" (has a live or paused boost) or "BUSINESS" (a business post). Others are absent. */
+    public Map<UUID, String> promotionTags(Collection<UUID> postIds) {
+        List<UUID> ids = postIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, String> out = new HashMap<>();
+        businessPostRepository.findByPostIdIn(ids).forEach(bp -> out.put(bp.getPostId(), "BUSINESS"));
+        for (UUID id : out.keySet().stream().toList()) {
+            if (boostRepository.existsByPostIdAndStatusIn(id,
+                    EnumSet.of(PromoEnums.BoostStatus.ACTIVE, PromoEnums.BoostStatus.PAUSED))) {
+                out.put(id, "SPONSORED");
+            }
+        }
+        return out;
+    }
+
     // ---- Revenue (ADMIN) ----
 
     public List<RevenueRow> revenue(int days) {

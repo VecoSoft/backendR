@@ -144,23 +144,25 @@ public class SmartSearchService {
                     used, result.total(), (System.nanoTime() - started) / 1_000_000);
         }
         return new SmartSearchResponse(pageResponse, summary(intent, area, lang), notice,
-                intent.nearMe() && !userCoords, reasons, page == 0 ? sponsoredFor(intent, r) : null);
+                intent.nearMe() && !userCoords, reasons, page == 0 ? sponsoredFor(intent, r, cards) : null);
     }
 
     /**
      * V58: one sponsored result matching the query's category kinds / area — computed AFTER and
      * independently of the organic ranking above, which it never touches.
      */
-    private com.bdreview.platform.promo.SponsoredService.SponsoredBusiness sponsoredFor(SearchIntent intent, Request r) {
+    private com.bdreview.platform.promo.SponsoredService.SponsoredBusiness sponsoredFor(SearchIntent intent, Request r,
+                                                                                        List<BusinessResponse> organic) {
         if (sponsoredService == null) {
             return null;
         }
         Set<String> kinds = new LinkedHashSet<>();
         intent.concepts().forEach(c -> kinds.add(c.kind()));
+        Set<UUID> onPage = organic.stream().map(BusinessResponse::id).collect(java.util.stream.Collectors.toSet());
         try {
             return sponsoredService.forSearch(
                     new com.bdreview.platform.promo.SponsoredService.Viewer(null, r.lat(), r.lng(), r.sessionId()),
-                    kinds, intent.areaId()).orElse(null);
+                    kinds, intent.areaId(), onPage).orElse(null);
         } catch (RuntimeException e) {
             log.warn("Sponsored search slot skipped: {}", e.getMessage());
             return null;

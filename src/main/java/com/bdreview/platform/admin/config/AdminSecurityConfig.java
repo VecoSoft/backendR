@@ -65,6 +65,16 @@ public class AdminSecurityConfig {
                                 "/admin/community/users/*/reveal",
                                 "/admin/community/posts/*/hard-delete").hasRole("ADMIN")
                         .requestMatchers("/admin/community/**", "/admin/community").hasAnyRole("ADMIN", "MODERATOR")
+                        // V58 Promotions: moderators review posts/boosts and pause/end live boosts;
+                        // money, settings, templates, packages, restrictions and revenue are ADMIN.
+                        .requestMatchers("/admin/promotions/settings/**", "/admin/promotions/settings",
+                                "/admin/promotions/templates/**", "/admin/promotions/templates",
+                                "/admin/promotions/packages/**", "/admin/promotions/packages",
+                                "/admin/promotions/restrictions/**", "/admin/promotions/restrictions",
+                                "/admin/promotions/revenue/**", "/admin/promotions/revenue",
+                                "/admin/promotions/boosts/*/verify-payment", "/admin/promotions/boosts/*/reject-payment",
+                                "/admin/promotions/boosts/*/targeting").hasRole("ADMIN")
+                        .requestMatchers("/admin/promotions/**", "/admin/promotions").hasAnyRole("ADMIN", "MODERATOR")
                         .anyRequest().hasRole("ADMIN"))
                 .addFilterBefore(staffRevalidationFilter(), AnonymousAuthenticationFilter.class)
                 .formLogin(form -> form

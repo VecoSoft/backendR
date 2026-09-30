@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Promo templates - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Design Studio templates</h1>
+            <p>Owners see enabled templates in this order. Previews are rendered by the live renderer with sample
+                data (Bangla and English). The layouts themselves are code; this page controls availability and order.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-card" th:each="t, stat : ${templates}">
+        <div class="d-flex justify-content-between flex-wrap gap-3">
+            <div>
+                <h2 class="h6 fw-bold mb-1">
+                    <span th:text="${t.name}">Offer — bold</span>
+                    <code class="small ms-1" th:text="${t.key}">OFFER_BOLD</code>
+                    <span class="badge ms-1" th:classappend="${t.active} ? 'text-bg-success' : 'text-bg-secondary'" th:text="${t.active} ? 'Enabled' : 'Disabled'">Enabled</span>
+                </h2>
+                <div class="small text-muted">For: <span th:text="${#strings.listJoin(t.supportedTypes, ', ')}">OFFER</span>
+                    · Formats: <span th:text="${#strings.listJoin(t.formats, ', ')}">SQUARE</span></div>
+                <div class="d-flex gap-2 mt-2">
+                    <form method="post" th:action="@{/admin/promotions/templates/{k}/active(k=${t.key})}">
+                        <input type="hidden" name="value" th:value="${!t.active}"/>
+                        <button class="btn btn-sm" th:classappend="${t.active} ? 'btn-outline-secondary' : 'btn-success'"
+                                th:text="${t.active} ? 'Disable' : 'Enable'">Disable</button>
+                    </form>
+                    <form method="post" th:action="@{/admin/promotions/templates/move}">
+                        <input type="hidden" name="key" th:value="${t.key}"/>
+                        <button name="direction" value="up" class="btn btn-sm btn-outline-dark" th:disabled="${stat.first}">↑</button>
+                        <button name="direction" value="down" class="btn btn-sm btn-outline-dark" th:disabled="${stat.last}">↓</button>
+                    </form>
+                </div>
+            </div>
+            <div class="d-flex gap-2 align-items-start flex-wrap">
+                <figure class="m-0 text-center">
+                    <img th:src="${frontendUrl + '/api/promo/sample/' + t.key + '?format=SQUARE&lang=en'}" alt="" width="180" height="180" class="border rounded" loading="lazy"/>
+                    <figcaption class="small text-muted">Square · EN</figcaption>
+                </figure>
+                <figure class="m-0 text-center">
+                    <img th:src="${frontendUrl + '/api/promo/sample/' + t.key + '?format=SQUARE&lang=bn'}" alt="" width="180" height="180" class="border rounded" loading="lazy"/>
+                    <figcaption class="small text-muted">Square · বাংলা</figcaption>
+                </figure>
+                <figure class="m-0 text-center">
+                    <img th:src="${frontendUrl + '/api/promo/sample/' + t.key + '?format=STORY&lang=bn'}" alt="" width="101" height="180" class="border rounded" loading="lazy"/>
+                    <figcaption class="small text-muted">Story</figcaption>
+                </figure>
+                <figure class="m-0 text-center">
+                    <img th:src="${frontendUrl + '/api/promo/sample/' + t.key + '?format=OG&lang=en'}" alt="" width="229" height="120" class="border rounded" loading="lazy"/>
+                    <figcaption class="small text-muted">Link preview</figcaption>
+                </figure>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

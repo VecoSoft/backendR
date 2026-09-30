@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Boost packages - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Boost packages</h1>
+            <p>What owners can buy. A boost keeps the package name, price and impressions it was bought with,
+                so editing a package never changes boosts already paid for.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Name</th><th>Price (৳)</th><th>Est. impressions</th><th>Days</th><th>Max radius (km)</th><th>Order</th><th>Active</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="p : ${packages}">
+                <form method="post" th:action="@{/admin/promotions/packages}" th:id="${'pkg-' + p.id}">
+                    <input type="hidden" name="id" th:value="${p.id}"/>
+                </form>
+                <td><input class="form-control form-control-sm" name="name" th:value="${p.name}" th:form="${'pkg-' + p.id}" required maxlength="80"/></td>
+                <td><input class="form-control form-control-sm" type="number" step="0.01" min="1" name="priceBdt" th:value="${p.priceBdt}" th:form="${'pkg-' + p.id}"/></td>
+                <td><input class="form-control form-control-sm" type="number" min="1" name="estImpressions" th:value="${p.estImpressions}" th:form="${'pkg-' + p.id}"/></td>
+                <td><input class="form-control form-control-sm" type="number" min="1" max="90" name="durationDays" th:value="${p.durationDays}" th:form="${'pkg-' + p.id}"/></td>
+                <td><input class="form-control form-control-sm" type="number" min="1" max="50" name="maxRadiusKm" th:value="${p.maxRadiusKm}" th:form="${'pkg-' + p.id}"/></td>
+                <td><input class="form-control form-control-sm" type="number" name="sortOrder" th:value="${p.sortOrder}" th:form="${'pkg-' + p.id}" style="width:80px;"/></td>
+                <td><input class="form-check-input" type="checkbox" name="active" value="true" th:checked="${p.active}" th:form="${'pkg-' + p.id}"/></td>
+                <td class="text-nowrap">
+                    <button class="btn btn-sm btn-primary" th:form="${'pkg-' + p.id}">Save</button>
+                    <form method="post" th:action="@{/admin/promotions/packages/{id}/delete(id=${p.id})}" class="d-inline"
+                          onsubmit="return confirm('Remove this package? It is deactivated instead if boosts used it.');">
+                        <button class="btn btn-sm btn-outline-danger">Remove</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="admin-card mt-3">
+        <h2 class="h6 fw-bold mb-3">Add a package</h2>
+        <form method="post" th:action="@{/admin/promotions/packages}" class="row g-2 align-items-end">
+            <div class="col-md-3"><label class="form-label small">Name</label><input class="form-control form-control-sm" name="name" required maxlength="80"/></div>
+            <div class="col-md-2"><label class="form-label small">Price (৳)</label><input class="form-control form-control-sm" type="number" step="0.01" min="1" name="priceBdt" required/></div>
+            <div class="col-md-2"><label class="form-label small">Est. impressions</label><input class="form-control form-control-sm" type="number" min="1" name="estImpressions" required/></div>
+            <div class="col-md-1"><label class="form-label small">Days</label><input class="form-control form-control-sm" type="number" min="1" max="90" name="durationDays" required/></div>
+            <div class="col-md-1"><label class="form-label small">Max km</label><input class="form-control form-control-sm" type="number" min="1" max="50" name="maxRadiusKm" value="10" required/></div>
+            <div class="col-md-1"><label class="form-label small">Order</label><input class="form-control form-control-sm" type="number" name="sortOrder" value="100"/></div>
+            <div class="col-md-1"><div class="form-check"><input class="form-check-input" type="checkbox" name="active" value="true" checked id="newActive"/><label class="form-check-label small" for="newActive">Active</label></div></div>
+            <div class="col-md-1"><button class="btn btn-sm btn-success w-100">Add</button></div>
+        </form>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

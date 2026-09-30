@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Promotion settings - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Promotion settings</h1>
+            <p>Enforced by the server on the next request. Saved in the community settings document, so every
+                save is audit-logged with a before/after diff.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form method="post" th:action="@{/admin/promotions/settings}">
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Features</h2>
+            <div class="d-flex flex-wrap gap-4">
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="businessPostsEnabled" id="s1" th:checked="${promo.businessPostsEnabled}"/>
+                    <label class="form-check-label" for="s1">Business posts</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="requireApprovalForBusinessPosts" id="s2" th:checked="${promo.requireApprovalForBusinessPosts}"/>
+                    <label class="form-check-label" for="s2">Require approval for business posts</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="boostsEnabled" id="s3" th:checked="${promo.boostsEnabled}"/>
+                    <label class="form-check-label" for="s3">Boosts (paid promotion)</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="boostRequiresReview" id="s4" th:checked="${promo.boostRequiresReview}"/>
+                    <label class="form-check-label" for="s4">Paid boosts need moderator review</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="sponsoredInSearch" id="s5" th:checked="${promo.sponsoredInSearch}"/>
+                    <label class="form-check-label" for="s5">Sponsored result in search</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="featuredNearbyEnabled" id="s6" th:checked="${promo.featuredNearbyEnabled}"/>
+                    <label class="form-check-label" for="s6">Home "Featured nearby"</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="captionAiEnabled" id="s7" th:checked="${promo.captionAiEnabled}"/>
+                    <label class="form-check-label" for="s7">AI captions ("Write for me")</label></div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Limits &amp; placement</h2>
+            <div class="row g-3">
+                <div class="col-md-3"><label class="form-label small">Business posts per week</label>
+                    <input type="number" min="0" max="100" name="businessPostsPerWeek" class="form-control form-control-sm" th:value="${promo.businessPostsPerWeek}"/></div>
+                <div class="col-md-3"><label class="form-label small">Minimum post length (characters)</label>
+                    <input type="number" min="0" max="2000" name="minBodyLength" class="form-control form-control-sm" th:value="${promo.minBodyLength}"/></div>
+                <div class="col-md-3"><label class="form-label small">Sponsored feed ratio (1 per N posts; 0 = off)</label>
+                    <input type="number" min="0" max="100" name="sponsoredFeedRatio" class="form-control form-control-sm" th:value="${promo.sponsoredFeedRatio}"/></div>
+                <div class="col-md-3"><label class="form-label small">Frequency cap (same boost per viewer per day)</label>
+                    <input type="number" min="1" max="20" name="frequencyCapPerDay" class="form-control form-control-sm" th:value="${promo.frequencyCapPerDay}"/></div>
+                <div class="col-md-3"><label class="form-label small">AI captions per business per day</label>
+                    <input type="number" min="0" max="500" name="captionsPerBusinessPerDay" class="form-control form-control-sm" th:value="${promo.captionsPerBusinessPerDay}"/></div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Banned promotion categories</h2>
+            <div class="d-flex flex-wrap gap-4 mb-3">
+                <div class="form-check" th:each="c : ${categoryLabels}">
+                    <input class="form-check-input" type="checkbox" name="bannedCategories" th:value="${c.key}" th:id="${'bc-' + c.key}"
+                           th:checked="${promo.bannedCategories.contains(c.key)}"/>
+                    <label class="form-check-label" th:for="${'bc-' + c.key}" th:text="${c.value}">Alcohol</label>
+                </div>
+            </div>
+            <label class="form-label small">Extra banned words or phrases (one per line, Bangla or English)</label>
+            <textarea name="extraBannedKeywords" rows="4" class="form-control form-control-sm"
+                      th:text="${#strings.listJoin(promo.extraBannedKeywords, '&#10;')}"></textarea>
+        </div>
+
+        <div class="admin-card">
+            <h2 class="h6 fw-bold mb-3">Manual payment (shown to owners on the Boost payment step)</h2>
+            <div class="row g-3">
+                <div class="col-md-4"><label class="form-label small">bKash merchant number</label>
+                    <input type="text" name="bkashNumber" class="form-control form-control-sm" th:value="${promo.bkashNumber}" placeholder="01XXXXXXXXX"/></div>
+                <div class="col-md-4"><label class="form-label small">Nagad merchant number</label>
+                    <input type="text" name="nagadNumber" class="form-control form-control-sm" th:value="${promo.nagadNumber}" placeholder="01XXXXXXXXX"/></div>
+            </div>
+            <div class="form-text">Leave both empty to hide the payment option (owners then can't pay for boosts).</div>
+        </div>
+
+        <div class="admin-card d-flex gap-2 align-items-end">
+            <div class="flex-grow-1"><label class="form-label small">Reason for this change (audit log)</label>
+                <input type="text" name="reason" class="form-control form-control-sm" maxlength="300"/></div>
+            <button class="btn btn-primary">Save settings</button>
+        </div>
+    </form>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

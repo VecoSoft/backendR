@@ -101,14 +101,19 @@ public class SponsoredService {
     /**
      * Search: at most ONE sponsored result, only when the boosted business matches the query's
      * category kind(s) or its area. Returned separately from the organic results, which the
-     * caller must leave exactly as they were.
+     * caller must leave exactly as they were. Businesses already on the organic page are skipped —
+     * an ad for a result the viewer can already see is a wasted, duplicate slot.
      */
-    public Optional<SponsoredBusiness> forSearch(Viewer viewer, Set<String> categoryKinds, UUID queryAreaId) {
+    public Optional<SponsoredBusiness> forSearch(Viewer viewer, Set<String> categoryKinds, UUID queryAreaId,
+                                                 Set<UUID> organicBusinessIds) {
         CommunitySettings.Promotions p = access.settings();
         if (!p.isBoostsEnabled() || !p.isSponsoredInSearch() || (categoryKinds.isEmpty() && queryAreaId == null)) {
             return Optional.empty();
         }
         List<Served> served = pick(viewer, 1, s -> {
+            if (organicBusinessIds.contains(s.business().getId())) {
+                return false;
+            }
             boolean kindMatch = !categoryKinds.isEmpty()
                     && categoryKinds.contains(s.business().getCategory().getKind().name());
             boolean areaMatch = queryAreaId != null && (queryAreaId.equals(s.business().getArea().getId())

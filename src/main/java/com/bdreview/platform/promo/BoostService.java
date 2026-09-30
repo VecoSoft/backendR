@@ -39,6 +39,12 @@ public class BoostService {
     static final Set<Integer> RADIUS_OPTIONS_KM = Set.of(2, 5, 10);
     static final int MAX_TARGET_AREAS = 10;
     static final int MAX_DAYS_AHEAD = 30;
+    /** An offer must still run this long after a boost starts — nobody should pay for a few hours of reach. */
+    static final Duration MIN_OFFER_RUNWAY = Duration.ofHours(12);
+
+    static boolean offerHasRunway(Offer offer, Instant startAt) {
+        return offer != null && offer.isCurrentlyActive() && offer.getValidUntil().isAfter(startAt.plus(MIN_OFFER_RUNWAY));
+    }
     static final EnumSet<BoostStatus> OPEN = EnumSet.of(BoostStatus.PENDING_PAYMENT, BoostStatus.PENDING_REVIEW,
             BoostStatus.ACTIVE, BoostStatus.PAUSED);
 
@@ -123,9 +129,9 @@ public class BoostService {
         Instant startAt = start.equals(today) ? now : start.atStartOfDay(ZONE).toInstant();
         Instant endAt = startAt.plus(Duration.ofDays(pkg.getDurationDays()));
         if (bp.getOfferId() != null) {
-            Offer offer = offerRepository.findById(bp.getOfferId()).orElse(null);
-            if (offer == null || !offer.isCurrentlyActive() || !offer.getValidUntil().isAfter(startAt.plus(Duration.ofHours(12)))) {
-                throw new BadRequestException("This offer ends before the boost would start. Pick an earlier date or another post.");
+            if (!offerHasRunway(offerRepository.findById(bp.getOfferId()).orElse(null), startAt)) {
+                throw new BadRequestException("This offer ends less than 12 hours after the boost would start. "
+                        + "Extend the offer, pick an earlier start date, or boost another post.");
             }
         }
 

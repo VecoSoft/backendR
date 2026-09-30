@@ -64,6 +64,13 @@ public class AdminCommunityController {
         this.areaRepository = areaRepository;
     }
 
+    private com.bdreview.platform.promo.PromoAdminService promoAdminService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPromoAdminService(com.bdreview.platform.promo.PromoAdminService promoAdminService) {
+        this.promoAdminService = promoAdminService;
+    }
+
     /** Reason quick-picks for every moderation form (a <datalist>). */
     @ModelAttribute("reasonTemplates")
     public List<String> reasonTemplates() {
@@ -271,8 +278,11 @@ public class AdminCommunityController {
 
     @GetMapping("/reports")
     public String reports(@RequestParam(required = false) String type, @RequestParam(defaultValue = "0") int page, Model model) {
-        model.addAttribute("results", queries.reportGroups(blank(type),
-                PageRequest.of(Math.max(page, 0), CommunityAdminQueryService.PAGE_SIZE)));
+        var results = queries.reportGroups(blank(type), PageRequest.of(Math.max(page, 0), CommunityAdminQueryService.PAGE_SIZE));
+        model.addAttribute("results", results);
+        // V58: reports on business / sponsored posts are tagged so moderators see paid content at a glance.
+        model.addAttribute("promoTags", promoAdminService.promotionTags(
+                results.getContent().stream().map(CommunityAdminQueryService.ReportGroup::postId).toList()));
         model.addAttribute("type", type);
         model.addAttribute("active", "c-reports");
         return "admin/community/reports";

@@ -100,7 +100,8 @@ public class CommunityPromotionBridge implements BusinessPostSupport {
                     interested.contains(bp.getPostId()),
                     // The rejection reason is only for the owner's eyes.
                     isOwner ? bp.getRejectionReason() : null,
-                    isOwner && status == BusinessPostStatus.PUBLISHED && access.settings().isBoostsEnabled()));
+                    isOwner && status == BusinessPostStatus.PUBLISHED && access.settings().isBoostsEnabled()
+                            && (bp.getOfferId() == null || BoostService.offerHasRunway(offer, java.time.Instant.now()))));
         }
         return out;
     }

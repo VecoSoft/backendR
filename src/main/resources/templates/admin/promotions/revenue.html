@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Boost revenue - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar(${active})}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Boost revenue</h1>
+            <p>Verified boost payments (refunded boosts excluded), by day, week and package.</p>
+        </div>
+        <div class="btn-group btn-group-sm">
+            <a th:href="@{/admin/promotions/revenue(days=7)}" class="btn" th:classappend="${days == 7} ? 'btn-dark' : 'btn-outline-dark'">7 days</a>
+            <a th:href="@{/admin/promotions/revenue(days=30)}" class="btn" th:classappend="${days == 30} ? 'btn-dark' : 'btn-outline-dark'">30 days</a>
+            <a th:href="@{/admin/promotions/revenue(days=90)}" class="btn" th:classappend="${days == 90} ? 'btn-dark' : 'btn-outline-dark'">90 days</a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="admin-card">
+                <div class="small text-muted">Total</div>
+                <div class="h3 fw-bold mb-0" th:text="'৳' + ${total}">৳0</div>
+            </div>
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-2">By package</h2>
+                <div th:each="e : ${byPackage}" class="d-flex justify-content-between small border-bottom py-1">
+                    <span th:text="${e.key}">Standard</span><span class="text-mono" th:text="'৳' + ${e.value}">৳0</span>
+                </div>
+                <p th:if="${byPackage.isEmpty()}" class="text-muted small mb-0">No paid boosts yet.</p>
+            </div>
+            <div class="admin-card">
+                <h2 class="h6 fw-bold mb-2">By week (starting Saturday)</h2>
+                <div th:each="e : ${byWeek}" class="d-flex justify-content-between small border-bottom py-1">
+                    <span th:text="${e.key}">2026-09-26</span><span class="text-mono" th:text="'৳' + ${e.value}">৳0</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead><tr><th>Day</th><th>Package</th><th>Boosts</th><th>Amount</th></tr></thead>
+                    <tbody>
+                    <tr th:each="r : ${rows}">
+                        <td th:text="${r.day}">day</td>
+                        <td th:text="${r.packageName}">Standard</td>
+                        <td th:text="${r.boosts}">1</td>
+                        <td class="text-mono" th:text="'৳' + ${r.amount}">৳0</td>
+                    </tr>
+                    <tr th:if="${rows.isEmpty()}"><td colspan="4" class="text-muted small">No verified payments in this window.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>
