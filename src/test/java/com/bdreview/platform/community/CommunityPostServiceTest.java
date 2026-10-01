@@ -92,7 +92,7 @@ class CommunityPostServiceTest {
     }
 
     private User pseudonymousUser(UUID id) {
-        return User.builder().id(id).name("Nur Sayed").communityUsername("UrbanExplorer42").build();
+        return User.builder().id(id).name("Nur Sayed").communityUsername("UrbanExplorer42").communityGender("M").build();
     }
 
     private CreateCommunityPostRequest textPostRequest() {

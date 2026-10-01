@@ -149,7 +149,7 @@ public class BusinessPostService {
                 bp.getPublishedAt() != null ? bp.getPublishedAt() : Instant.now()));
         boolean wasLive = bp.getStatus() == BusinessPostStatus.PUBLISHED;
         if (req.publish() || wasLive) {
-            if (wasLive && settings.isRequireApprovalForBusinessPosts()) {
+            if (wasLive && needsReview(bp, settings)) {
                 // An edited live post goes back through review when approval is required.
                 bp.setStatus(BusinessPostStatus.PENDING_REVIEW);
                 post.setStatus(CommunityContentStatus.PENDING);
@@ -392,7 +392,7 @@ public class BusinessPostService {
             throw new BadRequestException("You've reached this week's limit of " + settings.getBusinessPostsPerWeek()
                     + " business posts. Drafts are saved — submit again later.");
         }
-        if (settings.isRequireApprovalForBusinessPosts()) {
+        if (needsReview(bp, settings)) {
             bp.setStatus(BusinessPostStatus.PENDING_REVIEW);
             bp.setRejectionReason(null);
             post.setStatus(CommunityContentStatus.PENDING);
@@ -404,6 +404,23 @@ public class BusinessPostService {
         } else {
             markPublished(bp, post);
         }
+    }
+
+    /**
+     * Review before going live: always when the admin requires it for all business posts, and
+     * (V61) for posts whose creative uses an owner-uploaded image when that setting is on —
+     * an uploaded banner can't be checked automatically the way template text is.
+     */
+    private boolean needsReview(BusinessPost bp, CommunitySettings.Promotions settings) {
+        if (settings.isRequireApprovalForBusinessPosts()) {
+            return true;
+        }
+        if (!settings.isUploadedImagesRequireApproval() || bp.getCreativeId() == null) {
+            return false;
+        }
+        return creativeRepository.findById(bp.getCreativeId())
+                .map(c -> PromoUploads.mentionsOwnUpload(c.getDataJson(), bp.getBusinessId()))
+                .orElse(false);
     }
 
     private void markPublished(BusinessPost bp, CommunityPost post) {

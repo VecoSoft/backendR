@@ -53,6 +53,12 @@ public class PromoController {
         return creativeService.previewModel(CurrentUser.id(), businessId, req);
     }
 
+    /** V61: a pre-signed slot for the owner's own banner/photo (JPEG). */
+    @PostMapping("/businesses/{businessId}/uploads")
+    public PromoCreativeService.UploadSlot uploadSlot(@PathVariable UUID businessId) {
+        return creativeService.uploadSlot(CurrentUser.id(), businessId);
+    }
+
     @PostMapping("/businesses/{businessId}/creatives")
     public PromoCreativeService.SavedCreative saveCreative(@PathVariable UUID businessId,
                                                            @Valid @RequestBody PromoCreativeService.CreativeRequest req) {

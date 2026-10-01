@@ -21,6 +21,8 @@ public record CommunityProfileResponse(
         boolean isFollowing,
         long followerCount,
         long followingCount,
-        String communityAvatarUrl
+        String communityAvatarUrl,
+        /** V59: "M"/"F" badge — null when hidden by the member or not chosen yet. */
+        String gender
 ) {
 }

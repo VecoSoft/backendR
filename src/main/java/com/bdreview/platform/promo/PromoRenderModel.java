@@ -34,7 +34,9 @@ public record PromoRenderModel(
         /** The QR/"scan me" target — the business page with ?ref=promo_&lt;creativeId&gt;. */
         String shareUrl,
         /** The linked offer has ended — share pages overlay "Expired". */
-        boolean expired) {
+        boolean expired,
+        /** V61: "FIT" or "FILL" — how the CUSTOM template places the owner's uploaded banner. */
+        String imageFit) {
 
     public record Quote(String text, String firstName, int rating) {
     }

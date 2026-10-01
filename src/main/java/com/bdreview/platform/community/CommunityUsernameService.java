@@ -50,6 +50,10 @@ public class CommunityUsernameService {
         this.policy = policy;
     }
 
+    User currentUser(UUID userId) {
+        return userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
     public boolean isAvailable(String candidate) {
         return isValidFormat(candidate) && !isReserved(candidate)
                 && !userRepository.existsByCommunityUsernameIgnoreCase(candidate);
@@ -75,8 +79,13 @@ public class CommunityUsernameService {
         return "JachaiUser" + UUID.randomUUID().toString().substring(0, 8);
     }
 
+    /**
+     * V59: {@code gender} ("M"/"F") is required the first time — a member can't finish setup
+     * without it. Once chosen it may be omitted (a rename keeps it) or sent to change it.
+     */
     @Transactional
-    public String setUsername(UUID userId, String requested) {
+    public String setUsername(UUID userId, String requested, String gender) {
+        String normalizedGender = normalizeGender(gender);
         String candidate = requested == null ? "" : requested.trim();
         if (!isValidFormat(candidate)) {
             throw new BadRequestException(
@@ -87,11 +96,18 @@ public class CommunityUsernameService {
         }
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (normalizedGender == null && user.getCommunityGender() == null) {
+            throw new BadRequestException("Please choose Male or Female.");
+        }
         if (policy != null && user.getCommunityUsername() != null) {
             policy.assertNotRestricted(userId, CommunityPolicyService.Action.PROFILE);
         }
+        if (normalizedGender != null) {
+            user.setCommunityGender(normalizedGender);
+        }
         if (candidate.equalsIgnoreCase(user.getCommunityUsername())) {
-            return user.getCommunityUsername(); // no-op: re-submitting your own current username
+            userRepository.save(user); // same username — only the gender may have changed
+            return user.getCommunityUsername();
         }
         if (userRepository.existsByCommunityUsernameIgnoreCase(candidate)) {
             throw new BadRequestException("That username is already taken.");
@@ -99,5 +115,45 @@ public class CommunityUsernameService {
         user.setCommunityUsername(candidate);
         userRepository.save(user);
         return candidate;
+    }
+
+    /**
+     * V59: pick/change the gender and/or show or hide the badge. Both optional; a member who never
+     * chose a gender must send one (they can't hide a badge they don't have yet).
+     */
+    @Transactional
+    public User updateGender(UUID userId, String gender, Boolean visible) {
+        String normalizedGender = normalizeGender(gender);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        if (user.getCommunityUsername() == null) {
+            throw new BadRequestException("Set up your Community username first.");
+        }
+        if (normalizedGender == null && user.getCommunityGender() == null) {
+            throw new BadRequestException("Please choose Male or Female.");
+        }
+        if (normalizedGender != null && !normalizedGender.equals(user.getCommunityGender())) {
+            // Changing what others see is a profile edit — same restriction as renaming.
+            if (policy != null && user.getCommunityGender() != null) {
+                policy.assertNotRestricted(userId, CommunityPolicyService.Action.PROFILE);
+            }
+            user.setCommunityGender(normalizedGender);
+        }
+        if (visible != null) {
+            user.setCommunityGenderVisible(visible);
+        }
+        return userRepository.save(user);
+    }
+
+    /** "M"/"F" (case-insensitive, also "male"/"female"), null when absent; anything else is a 400. */
+    static String normalizeGender(String gender) {
+        if (gender == null || gender.isBlank()) {
+            return null;
+        }
+        return switch (gender.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "M", "MALE" -> "M";
+            case "F", "FEMALE" -> "F";
+            default -> throw new BadRequestException("Gender must be Male or Female.");
+        };
     }
 }

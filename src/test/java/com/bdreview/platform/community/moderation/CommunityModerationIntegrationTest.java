@@ -94,6 +94,7 @@ class CommunityModerationIntegrationTest {
                 .otpVerified(true)
                 .passwordHash("$2a$10$abcdefghijklmnopqrstuuJ4t6x0bE2Qm0vXgk3H5yqk6n2k1V0bW")
                 .communityUsername(communityUsername == null ? null : communityUsername.substring(0, Math.min(20, communityUsername.length())))
+                .communityGender(communityUsername == null ? null : "F")
                 .staffRole(staffRole)
                 .build());
     }

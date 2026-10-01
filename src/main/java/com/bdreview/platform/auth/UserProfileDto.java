@@ -16,5 +16,9 @@ public record UserProfileDto(
         /** This account's own Community-facing pseudonymous id — compare against a post/comment's author.id for "is this mine", never against {@code id} (see V46's migration comment). */
         UUID communityProfileId,
         /** Separate from profilePhotoUrl — the avatar shown publicly next to u/{communityUsername}, never the real photo. */
-        String communityAvatarUrl) {
+        String communityAvatarUrl,
+        /** V59: "M"/"F", null until chosen — the owner always sees their own, even when hidden from others. */
+        String communityGender,
+        /** V59: whether the M/F badge is shown to other people. */
+        boolean communityGenderVisible) {
 }

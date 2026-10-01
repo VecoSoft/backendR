@@ -187,6 +187,8 @@ public class AdminPromotionController {
             p.setFeaturedNearbyEnabled(form.containsKey("featuredNearbyEnabled"));
             p.setCaptionAiEnabled(form.containsKey("captionAiEnabled"));
             p.setBoostRequiresReview(form.containsKey("boostRequiresReview"));
+            p.setUploadsEnabled(form.containsKey("uploadsEnabled"));
+            p.setUploadedImagesRequireApproval(form.containsKey("uploadedImagesRequireApproval"));
             p.setBusinessPostsPerWeek(intOf(form, "businessPostsPerWeek", p.getBusinessPostsPerWeek()));
             p.setMinBodyLength(intOf(form, "minBodyLength", p.getMinBodyLength()));
             p.setSponsoredFeedRatio(intOf(form, "sponsoredFeedRatio", p.getSponsoredFeedRatio()));

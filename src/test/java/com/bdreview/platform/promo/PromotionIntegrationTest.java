@@ -115,6 +115,7 @@ class PromotionIntegrationTest {
                 .otpVerified(true)
                 .passwordHash("$2a$10$abcdefghijklmnopqrstuuJ4t6x0bE2Qm0vXgk3H5yqk6n2k1V0bW")
                 .communityUsername(communityUsername == null ? null : communityUsername.substring(0, Math.min(20, communityUsername.length())))
+                .communityGender(communityUsername == null ? null : "F")
                 .staffRole(staffRole)
                 .build());
     }
@@ -501,5 +502,82 @@ class PromotionIntegrationTest {
         assertThat(body.get("en")).hasSize(3);
         body.get("en").forEach(c -> assertThat(c.asText().length()).isLessThanOrEqualTo(220));
         assertThat(body.get("en").get(0).asText()).contains("Zinger 20% off");
+    }
+
+    // -----------------------------------------------------------------
+    // V61: own uploads + "Your own design"
+    // -----------------------------------------------------------------
+
+    private String uploadUrl(String token, UUID business) throws Exception {
+        MvcResult r = call(HttpMethod.POST, "/api/v1/promo/businesses/" + business + "/uploads", token, Map.of());
+        assertThat(status(r)).as(r.getResponse().getContentAsString()).isEqualTo(200);
+        JsonNode slot = json(r);
+        assertThat(slot.get("objectKey").asText()).startsWith("promo/" + business + "/uploads/").endsWith(".jpg");
+        return slot.get("url").asText();
+    }
+
+    private MvcResult saveCreative(String templateKey, String photoUrl, String fit) throws Exception {
+        Map<String, Object> data = new HashMap<>();
+        data.put("headline", "Weekend special");
+        data.put("photoUrl", photoUrl);
+        data.put("imageFit", fit);
+        data.put("showRating", false);
+        data.put("showQr", false);
+        data.put("showPrice", false);
+        return call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/creatives", ownerToken,
+                Map.of("templateKey", templateKey, "data", data));
+    }
+
+    @Test
+    void ownersCanUploadTheirOwnBannerAndUseIt() throws Exception {
+        assertThat(status(call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/uploads", otherOwnerToken, Map.of())))
+                .isEqualTo(403);
+        String url = uploadUrl(ownerToken, businessId);
+
+        MvcResult custom = saveCreative("CUSTOM", url, "FILL");
+        assertThat(status(custom)).as(custom.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(json(custom).get("creative").get("data").get("imageFit").asText()).isEqualTo("FILL");
+        // The same upload also works as the photo inside a regular template.
+        assertThat(status(saveCreative("SPLIT_PHOTO", url, null))).isEqualTo(200);
+
+        JsonNode studio = json(call(HttpMethod.GET, "/api/v1/promo/businesses/" + businessId + "/studio", ownerToken, null));
+        assertThat(studio.get("uploadsEnabled").asBoolean()).isTrue();
+        assertThat(studio.get("uploads").toString()).contains(url);
+        List<String> keys = new ArrayList<>();
+        studio.get("templates").forEach(t -> keys.add(t.get("key").asText()));
+        assertThat(keys).contains("CUSTOM", "SPLIT_PHOTO", "PRICE_SPOTLIGHT", "FESTIVE", "BIG_ANNOUNCEMENT");
+    }
+
+    @Test
+    void uploadsAreCheckedAndCanBeTurnedOff() throws Exception {
+        UUID rivalBusiness = jdbc.queryForObject("SELECT id FROM business WHERE owner_user_id = ?", UUID.class, otherOwner.getId());
+        String rivalUpload = uploadUrl(otherOwnerToken, rivalBusiness);
+        assertThat(status(saveCreative("CUSTOM", rivalUpload, null))).as("another business's upload").isEqualTo(400);
+        assertThat(status(saveCreative("CUSTOM", null, null))).as("own design without an image").isEqualTo(400);
+        assertThat(status(saveCreative("CUSTOM", uploadUrl(ownerToken, businessId), "STRETCH"))).as("bad fit").isEqualTo(400);
+
+        patchPromotionSettings(Map.of("uploadsEnabled", false));
+        assertThat(status(call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/uploads", ownerToken, Map.of())))
+                .isEqualTo(400);
+    }
+
+    @Test
+    void uploadedImagePostsWaitForApprovalOnlyWhenTheSettingIsOn() throws Exception {
+        patchPromotionSettings(Map.of("uploadedImagesRequireApproval", true));
+        UUID uploaded = UUID.fromString(json(saveCreative("CUSTOM", uploadUrl(ownerToken, businessId), null))
+                .get("creative").get("id").asText());
+        UUID templated = UUID.fromString(json(saveCreative("BIG_ANNOUNCEMENT", null, null)).get("creative").get("id").asText());
+
+        Map<String, Object> withUpload = postBody("GENERAL", "Our own banner for this weekend — come visit us!", true);
+        withUpload.put("creativeId", uploaded);
+        MvcResult held = call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/posts", ownerToken, withUpload);
+        assertThat(status(held)).as(held.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(json(held).get("promotion").get("status").asText()).isEqualTo("PENDING_REVIEW");
+
+        Map<String, Object> withTemplate = postBody("GENERAL", "A template banner for this weekend — come visit us!", true);
+        withTemplate.put("creativeId", templated);
+        MvcResult live = call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/posts", ownerToken, withTemplate);
+        assertThat(status(live)).as(live.getResponse().getContentAsString()).isEqualTo(200);
+        assertThat(json(live).get("promotion").get("status").asText()).isEqualTo("PUBLISHED");
     }
 }

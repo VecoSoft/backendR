@@ -65,6 +65,10 @@ public class CommunitySettings {
         private int captionsPerBusinessPerDay = 20;
         /** After payment is verified, a moderator must still approve the boost before it goes live. */
         private boolean boostRequiresReview = true;
+        /** V61: owners may upload their own banner/photos in the Design Studio. */
+        private boolean uploadsEnabled = true;
+        /** V61: a business post whose creative uses an uploaded image waits for moderator approval. */
+        private boolean uploadedImagesRequireApproval = false;
     }
 
     /** Markdown shown in the community sidebar and composer. */

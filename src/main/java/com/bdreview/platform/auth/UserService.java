@@ -94,6 +94,6 @@ public class UserService {
         return new UserProfileDto(user.getId(), user.getPhoneNumber(), user.getRole(),
                 user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage(),
                 accountLinkService.isLinked(user.getId()), user.getCommunityUsername(), user.getCommunityProfileId(),
-                user.getCommunityAvatarUrl());
+                user.getCommunityAvatarUrl(), user.getCommunityGender(), user.isCommunityGenderVisible());
     }
 }

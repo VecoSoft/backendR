@@ -566,6 +566,9 @@ public class CommunityPostService {
         if (user.getCommunityUsername() == null) {
             throw new BadRequestException("Set up your Community username before posting.");
         }
+        if (user.getCommunityGender() == null) {
+            throw new BadRequestException("Choose Male or Female for your Community profile before posting.");
+        }
         return user;
     }
 
@@ -1032,7 +1035,7 @@ public class CommunityPostService {
         long followingCount = followRepository.countByFollowerUserId(user.getId());
         return new CommunityProfileResponse(user.getCommunityProfileId(), user.getCommunityUsername(), user.getCreatedAt(),
                 user.isOtpVerified(), reviewCount, postCount, commentCount, isFollowing, followerCount, followingCount,
-                user.getCommunityAvatarUrl());
+                user.getCommunityAvatarUrl(), user.publicCommunityGender());
     }
 
     /** Sidebar "Following" — people the given user follows (not their posts; see the profile page's own Follow button for the post-feed equivalent, feed tab=FOLLOWING). */
@@ -1073,6 +1076,16 @@ public class CommunityPostService {
     // -----------------------------------------------------------------
     // Response assembly
     // -----------------------------------------------------------------
+
+    /** Community search (V60) reuses the feed's own response assembly. */
+    PageResponse<CommunityPostResponse> postPage(Page<CommunityPost> posts, UUID viewerUserId) {
+        return buildPageResponse(posts, viewerUserId);
+    }
+
+    /** Community search (V60): people results use the follower-list row shape. */
+    PageResponse<CommunityFollowListItem> peoplePage(Page<UUID> userIds, UUID viewerUserId) {
+        return toFollowListResponse(userIds, viewerUserId);
+    }
 
     private PageResponse<CommunityPostResponse> buildPageResponse(Page<CommunityPost> posts, UUID viewerUserId) {
         List<CommunityPost> content = posts.getContent();
@@ -1261,7 +1274,7 @@ public class CommunityPostService {
 
     /** Stands in for the author of a business post/comment (V58) — carries no member identity at all. */
     private static final CommunityAuthorSummary BUSINESS_AUTHOR_PLACEHOLDER =
-            new CommunityAuthorSummary(new UUID(0L, 0L), null, 0, null, false, null, false);
+            new CommunityAuthorSummary(new UUID(0L, 0L), null, 0, null, false, null, false, null);
 
     private static BusinessIdentity toBusinessIdentity(Business business, CommunityAreaSummary area) {
         return new BusinessIdentity(business.getId(), business.getName(), business.getSlug(), business.getLogoUrl(),
@@ -1317,12 +1330,13 @@ public class CommunityPostService {
         if (user == null) {
             // No row to read a communityProfileId off of (deleted/missing account) — fallbackId
             // here is the post/comment's own stored author_user_id, a dead-end lookup either way.
-            return new CommunityAuthorSummary(fallbackId, null, 0, null, false, null, false);
+            return new CommunityAuthorSummary(fallbackId, null, 0, null, false, null, false, null);
         }
         long reviewCount = reviewCounts.getOrDefault(user.getId(), 0L);
         return new CommunityAuthorSummary(
                 user.getCommunityProfileId(), user.getCommunityUsername(),
-                reviewCount, user.getCreatedAt(), user.isOtpVerified(), user.getCommunityAvatarUrl(), false);
+                reviewCount, user.getCreatedAt(), user.isOtpVerified(), user.getCommunityAvatarUrl(), false,
+                user.publicCommunityGender());
     }
 
     private CommunityMentionedBusinessSummary toBusinessSummary(Business business) {

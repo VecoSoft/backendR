@@ -57,6 +57,23 @@ public class User {
     private String communityAvatarUrl;
 
     /**
+     * V59: "M" or "F", picked alongside the Community username and shown as a small badge next to
+     * it. Null only for accounts that set a username before V59 (they're asked before posting).
+     */
+    @Column(name = "community_gender", length = 1)
+    private String communityGender;
+
+    /** V59: when false the badge is hidden — the gender is then never sent to other users. */
+    @Builder.Default
+    @Column(name = "community_gender_visible", nullable = false)
+    private boolean communityGenderVisible = true;
+
+    /** The badge other people see: the gender only when chosen and not hidden, else null. */
+    public String publicCommunityGender() {
+        return communityGenderVisible ? communityGender : null;
+    }
+
+    /**
      * Public identity for Community responses (author.id, profile userId, etc.) —
      * deliberately NOT {@link #id}, which the (non-anonymous) Review API also
      * returns alongside the reviewer's real name; reusing that same id in

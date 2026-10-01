@@ -63,7 +63,9 @@ public class PromoCreativeService {
             Instant eventEnd,
             boolean showRating,
             boolean showQr,
-            boolean showPrice) {
+            boolean showPrice,
+            /** V61: how an uploaded banner sits in each format — "FIT" (whole image) or "FILL" (cropped). Null = FIT. */
+            @Pattern(regexp = "^(FIT|FILL)$") String imageFit) {
     }
 
     public record CreativeRequest(@NotBlank @Size(max = 40) String templateKey, @jakarta.validation.Valid CreativeData data) {
@@ -90,7 +92,13 @@ public class PromoCreativeService {
             String categoryKind, BigDecimal averageRating, int reviewCount, PromoRenderModel.Quote bestQuote,
             List<String> photos, List<BusinessPostView.OfferRef> offers, List<BusinessPostView.MenuItemRef> menuItems,
             List<TemplateView> templates, List<String> swatches, String logoColor,
-            int postsRemainingThisWeek, boolean captionAiEnabled, boolean boostsEnabled) {
+            int postsRemainingThisWeek, boolean captionAiEnabled, boolean boostsEnabled,
+            /** V61: owners may upload their own banner/photos; {@code uploads} = their recent ones, newest first. */
+            boolean uploadsEnabled, List<String> uploads) {
+    }
+
+    /** V61: where the browser PUTs an owner's image, and the URL it will have afterwards. */
+    public record UploadSlot(String uploadUrl, String objectKey, String url) {
     }
 
     private final PromoAccess access;
@@ -164,7 +172,29 @@ public class PromoCreativeService {
                 b.getReviewCount() > 0 ? b.getAverageRating() : null, b.getReviewCount(), bestQuote(businessId),
                 new ArrayList<>(allowedPhotos(b)), offers, items, templates, BRAND_SWATCHES, logoColor(b.getLogoUrl()),
                 businessPostService.remainingThisWeek(businessId), access.settings().isCaptionAiEnabled(),
-                access.settings().isBoostsEnabled());
+                access.settings().isBoostsEnabled(), access.settings().isUploadsEnabled(), recentUploads(businessId));
+    }
+
+    /** The business's own uploaded images that were used on a creative, newest first (max 12). */
+    private List<String> recentUploads(UUID businessId) {
+        String cdnPrefix = storage.cdnUrlFor(PromoUploads.keyPrefix(businessId));
+        return jdbc.queryForList("""
+                SELECT data_json->>'photoUrl' AS url FROM promo_creative
+                WHERE business_id = ? AND data_json->>'photoUrl' LIKE ?
+                GROUP BY data_json->>'photoUrl' ORDER BY MAX(created_at) DESC LIMIT 12
+                """, String.class, businessId, "%" + PromoUploads.keyPrefix(businessId) + "%").stream()
+                .filter(u -> PromoUploads.isOwnUpload(u, businessId, cdnPrefix))
+                .toList();
+    }
+
+    /** V61: a pre-signed slot for the owner's own image (always JPEG — the Studio converts it first). */
+    public UploadSlot uploadSlot(UUID userId, UUID businessId) {
+        access.requireCanPromote(userId, businessId);
+        if (!access.settings().isUploadsEnabled()) {
+            throw new BadRequestException("Uploading your own images is turned off right now.");
+        }
+        String key = PromoUploads.newKey(businessId);
+        return new UploadSlot(storage.presignPutUrl(key), key, storage.cdnUrlFor(key));
     }
 
     // -----------------------------------------------------------------
@@ -217,7 +247,7 @@ public class PromoCreativeService {
                 hasReviews ? bestQuote(b.getId()) : null,
                 d.headline(), d.subline(), d.accentColor() == null ? BRAND_SWATCHES.get(0) : d.accentColor(), photo,
                 d.showRating() && hasReviews, d.showQr(), d.showPrice(), offerBlock, itemBlock, eventBlock, share,
-                offer != null && !offer.isCurrentlyActive());
+                offer != null && !offer.isCurrentlyActive(), d.imageFit() == null ? "FIT" : d.imageFit());
     }
 
     /** The big line on OFFER_BOLD — derived from the offer's own type and value, never typed by the owner. */
@@ -282,6 +312,7 @@ public class PromoCreativeService {
         Business b = loadBusiness(businessId);
         requireTemplate(req.templateKey(), true);
         CreativeData data = sanitize(b, req.data());
+        requireCustomImage(req.templateKey(), data);
         PromoCreative c = creativeRepository.save(PromoCreative.builder()
                 .businessId(businessId)
                 .templateKey(req.templateKey())
@@ -300,7 +331,9 @@ public class PromoCreativeService {
         Business b = loadBusiness(c.getBusinessId());
         requireTemplate(req.templateKey(), true);
         c.setTemplateKey(req.templateKey());
-        c.setDataJson(writeData(sanitize(b, req.data())));
+        CreativeData data = sanitize(b, req.data());
+        requireCustomImage(req.templateKey(), data);
+        c.setDataJson(writeData(data));
         creativeRepository.save(c);
         return new SavedCreative(toView(c), uploadTargets(c));
     }
@@ -356,8 +389,12 @@ public class PromoCreativeService {
         String subline = trimTo(d.subline(), SUBLINE_MAX);
         // Banned categories apply to creative text too — the owner types the headline/subline.
         contentRules.check(access.settings(), b, headline, subline, d.eventTitle());
-        if (d.photoUrl() != null && !d.photoUrl().isBlank() && !allowedPhotos(b).contains(d.photoUrl())) {
-            throw new BadRequestException("Pick a photo from your own listing, menu or offers.");
+        boolean ownUpload = PromoUploads.isOwnUpload(d.photoUrl(), b.getId(), storage.cdnUrlFor(PromoUploads.keyPrefix(b.getId())));
+        if (ownUpload && !access.settings().isUploadsEnabled()) {
+            throw new BadRequestException("Uploading your own images is turned off right now.");
+        }
+        if (d.photoUrl() != null && !d.photoUrl().isBlank() && !ownUpload && !allowedPhotos(b).contains(d.photoUrl())) {
+            throw new BadRequestException("Pick a photo from your own listing, menu or offers — or upload your own.");
         }
         if (d.offerId() != null) {
             Offer o = offerRepository.findById(d.offerId()).filter(x -> x.getBusinessId().equals(b.getId()))
@@ -375,7 +412,8 @@ public class PromoCreativeService {
         }
         return new CreativeData(headline, subline, d.accentColor() == null ? null : d.accentColor().toUpperCase(Locale.ROOT),
                 d.photoUrl() == null || d.photoUrl().isBlank() ? null : d.photoUrl(), d.offerId(), d.menuItemId(),
-                trimTo(d.eventTitle(), 80), d.eventStart(), d.eventEnd(), d.showRating(), d.showQr(), d.showPrice());
+                trimTo(d.eventTitle(), 80), d.eventStart(), d.eventEnd(), d.showRating(), d.showQr(), d.showPrice(),
+                d.imageFit() == null ? "FIT" : d.imageFit());
     }
 
     /** Photos an owner may put on a creative: their own cover/logo, gallery, menu item and offer photos. */
@@ -393,6 +431,13 @@ public class PromoCreativeService {
             out.add(b.getLogoUrl());
         }
         return out;
+    }
+
+    /** "Your own design" is the uploaded image itself — it can't be saved without one. */
+    private static void requireCustomImage(String templateKey, CreativeData data) {
+        if (PromoUploads.CUSTOM_TEMPLATE.equals(templateKey) && (data.photoUrl() == null || data.photoUrl().isBlank())) {
+            throw new BadRequestException("Upload your banner first.");
+        }
     }
 
     private PromoTemplate requireTemplate(String key, boolean mustBeActive) {

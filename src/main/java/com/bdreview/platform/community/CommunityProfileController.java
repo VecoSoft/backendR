@@ -35,8 +35,21 @@ public class CommunityProfileController {
 
     @PostMapping("/username")
     public ResponseEntity<SetCommunityUsernameResponse> setUsername(@Valid @RequestBody SetCommunityUsernameRequest request) {
-        String username = usernameService.setUsername(CurrentUser.id(), request.username());
-        return ResponseEntity.ok(new SetCommunityUsernameResponse(username));
+        String username = usernameService.setUsername(CurrentUser.id(), request.username(), request.gender());
+        return ResponseEntity.ok(genderResponse(username, CurrentUser.id()));
+    }
+
+    /** V59: pick/change the M/F badge or show/hide it. */
+    @PutMapping("/gender")
+    public ResponseEntity<SetCommunityUsernameResponse> updateGender(@RequestBody UpdateCommunityGenderRequest request) {
+        var user = usernameService.updateGender(CurrentUser.id(), request.gender(), request.visible());
+        return ResponseEntity.ok(new SetCommunityUsernameResponse(user.getCommunityUsername(), user.getCommunityGender(),
+                user.isCommunityGenderVisible()));
+    }
+
+    private SetCommunityUsernameResponse genderResponse(String username, java.util.UUID userId) {
+        var user = usernameService.currentUser(userId);
+        return new SetCommunityUsernameResponse(username, user.getCommunityGender(), user.isCommunityGenderVisible());
     }
 
     @GetMapping("/profile/{username}")

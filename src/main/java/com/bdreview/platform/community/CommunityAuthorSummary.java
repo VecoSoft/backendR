@@ -21,15 +21,18 @@ import java.util.UUID;
  *
  * <p>{@code official} (V56) marks the "Jachai Team" identity used for admin announcements — the
  * client shows the official badge and doesn't link it to a community profile.
+ *
+ * <p>{@code gender} (V59) is "M"/"F" for the small badge next to the username — null when the
+ * member hid it or hasn't chosen yet (and always null for official/business identities).
  */
 public record CommunityAuthorSummary(
         UUID id, String communityUsername,
         long reviewCount, Instant memberSince, boolean verified, String communityAvatarUrl,
-        boolean official) {
+        boolean official, String gender) {
 
     public static final String OFFICIAL_NAME = "Jachai Team";
 
     public static CommunityAuthorSummary jachaiTeam() {
-        return new CommunityAuthorSummary(new UUID(0L, 0L), OFFICIAL_NAME, 0, null, true, null, true);
+        return new CommunityAuthorSummary(new UUID(0L, 0L), OFFICIAL_NAME, 0, null, true, null, true, null);
     }
 }

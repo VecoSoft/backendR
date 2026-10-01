@@ -37,6 +37,10 @@
                     <label class="form-check-label" for="s6">Home "Featured nearby"</label></div>
                 <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="captionAiEnabled" id="s7" th:checked="${promo.captionAiEnabled}"/>
                     <label class="form-check-label" for="s7">AI captions ("Write for me")</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="uploadsEnabled" id="s8" th:checked="${promo.uploadsEnabled}"/>
+                    <label class="form-check-label" for="s8">Owners can upload their own banner / photos</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="uploadedImagesRequireApproval" id="s9" th:checked="${promo.uploadedImagesRequireApproval}"/>
+                    <label class="form-check-label" for="s9">Posts with an uploaded image need approval</label></div>
             </div>
         </div>
 
