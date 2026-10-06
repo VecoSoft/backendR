@@ -112,14 +112,44 @@
                 </form>
             </div>
 
-            <div class="admin-form-section">
+            <div class="admin-form-section" id="photos">
                 <h2>Photos (<span th:text="${photos.size()}">0</span>)</h2>
-                <div th:if="${photos.isEmpty()}" class="text-muted small">No gallery photos uploaded.</div>
-                <div class="row g-2">
-                    <div class="col-4" th:each="p : ${photos}">
-                        <img th:src="${p.url}" class="img-fluid rounded border" alt="business photo"/>
-                    </div>
+                <div th:if="${!pendingPhotos.isEmpty()}" class="alert alert-warning py-2 small">
+                    <i class="bi bi-hourglass-split"></i>
+                    <span th:text="${pendingPhotos.size()}">0</span> photo(s) of this business are waiting for review
+                    (<span th:text="${#strings.listJoin(pendingPhotos.![sourceType.label()], ', ')}">Cover photo</span>).
+                    <a th:href="@{/admin/photos}">Open the queue →</a>
                 </div>
+                <div th:if="${photos.isEmpty()}" class="text-muted small">No gallery photos uploaded.</div>
+                <form th:unless="${photos.isEmpty()}" method="post" th:action="@{/admin/businesses/{id}/photos(id=${business.id})}">
+                    <!-- Enter in the reason box must not trigger the first action button. -->
+                    <button type="submit" disabled hidden aria-hidden="true"></button>
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" maxlength="1000"
+                           placeholder="Reason (required for Delete / Set as cover)" required/>
+                    <div class="row g-2">
+                        <div class="col-6" th:each="p : ${photos}">
+                            <div class="border rounded overflow-hidden h-100 d-flex flex-column">
+                                <a th:href="@{/admin/businesses/{id}/photos/{pid}/image(id=${business.id},pid=${p.id})}" target="_blank" rel="noopener">
+                                    <img th:src="@{/admin/businesses/{id}/photos/{pid}/image(id=${business.id},pid=${p.id})}"
+                                         class="img-fluid w-100" style="aspect-ratio:4/3;object-fit:cover;" alt="business photo" loading="lazy"/>
+                                </a>
+                                <div class="p-1 d-flex flex-wrap gap-1 align-items-center small">
+                                    <span class="badge" th:text="${p.moderationStatus}"
+                                          th:classappend="${p.moderationStatus == 'APPROVED'} ? 'text-bg-success' : (${p.moderationStatus == 'PENDING'} ? 'text-bg-warning' : 'text-bg-secondary')">APPROVED</span>
+                                    <span th:if="${p.url == business.coverPhotoUrl}" class="badge text-bg-primary">Cover</span>
+                                </div>
+                                <div class="d-flex mt-auto border-top">
+                                    <button th:unless="${p.url == business.coverPhotoUrl or p.moderationStatus == 'REJECTED'}"
+                                            class="btn btn-sm btn-link text-decoration-none flex-fill"
+                                            th:formaction="@{/admin/businesses/{id}/photos/{pid}/cover(id=${business.id},pid=${p.id})}">Set as cover</button>
+                                    <button class="btn btn-sm btn-link text-danger text-decoration-none flex-fill"
+                                            th:formaction="@{/admin/businesses/{id}/photos/{pid}/delete(id=${business.id},pid=${p.id})}"
+                                            onclick="return confirm('Delete this photo? The file stops being served immediately.');">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

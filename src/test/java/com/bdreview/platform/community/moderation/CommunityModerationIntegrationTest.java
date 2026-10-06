@@ -53,6 +53,7 @@ class CommunityModerationIntegrationTest {
     @Autowired JwtService jwtService;
     @Autowired JdbcTemplate jdbc;
     @Autowired CommunitySettingsService settingsService;
+    @Autowired com.bdreview.platform.features.PlatformSettingStore platformSettings;
     @Autowired AuditLogRepository auditLogRepository;
     @Autowired ObjectMapper objectMapper;
 
@@ -70,6 +71,8 @@ class CommunityModerationIntegrationTest {
         // Every test starts from default settings (and a cold cache).
         jdbc.update("UPDATE community_settings SET settings = '{}'::jsonb WHERE id = 1");
         settingsService.evict();
+        jdbc.update("DELETE FROM platform_setting");
+        platformSettings.evict();
 
         admin = saveUser(UserRole.ADMIN, null, null);
         moderator = saveUser(UserRole.CONSUMER, "mod" + suffix(), User.STAFF_MODERATOR);
@@ -415,7 +418,11 @@ class CommunityModerationIntegrationTest {
 
     @Test
     void nidFlagOnRestoresNidUploadsForAdmins() throws Exception {
-        putSettings(Map.of("features", Map.of("nidVerificationEnabled", true)));
+        // V63: the NID flag moved from the community settings document to System → Settings (platform_setting).
+        mvc.perform(post("/admin/settings/NID_VERIFICATION")
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(admin.getId().toString()).roles("ADMIN"))
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .param("mode", "on").param("reason", "NID test"));
         String key = "nid/" + UUID.randomUUID() + "/card.jpg";
         assertThat(mvc.perform(put("/api/v1/storage/upload/" + key).content(new byte[]{1, 2, 3}))
                 .andReturn().getResponse().getStatus()).isEqualTo(200);

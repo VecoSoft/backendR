@@ -11,8 +11,20 @@
 <main class="admin-main">
     <div class="admin-page-header">
         <div>
-            <h1 th:text="${user.name} ?: user.phoneNumber">User</h1>
-            <p class="text-mono" th:text="${user.id}">-</p>
+            <a th:href="@{/admin/users}" class="small text-decoration-none">← All users</a>
+            <h1>
+                <span th:text="${user.name != null and !#strings.isEmpty(user.name) ? user.name : 'Unnamed user'}">Name</span>
+                <span class="text-muted fw-normal fs-5 text-mono ms-2" th:text="${user.phoneNumber}">+8801…</span>
+            </h1>
+            <p class="mb-0">
+                <span class="badge" th:classappend="'badge-role-' + ${user.role}" th:text="${user.role}">CONSUMER</span>
+                <span th:if="${restriction == null}" class="badge text-bg-success">ACTIVE</span>
+                <span th:if="${restriction != null and restriction.type.name() == 'SUSPEND'}" class="badge text-bg-warning"
+                      th:text="'SUSPENDED until ' + ${@fmt.dt(restriction.endsAt)}">SUSPENDED</span>
+                <span th:if="${restriction != null and restriction.type.name() == 'BAN'}" class="badge text-bg-danger">BANNED</span>
+                <span th:if="${user.moderator}" class="badge text-bg-primary">Moderator</span>
+                <span class="text-mono small text-muted ms-2" th:text="${user.id}">-</span>
+            </p>
         </div>
         <a th:href="@{/admin/users/{id}/edit(id=${user.id})}" class="btn btn-sm btn-outline-primary">
             <i class="bi bi-pencil"></i> Edit
@@ -21,7 +33,17 @@
 
     <div th:replace="~{admin/fragments/parts :: alerts}"></div>
 
-    <div class="row g-3">
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link" th:classappend="${tab == 'overview'} ? 'active'" th:href="@{/admin/users/{id}(id=${user.id})}">Overview</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" th:classappend="${tab == 'activity'} ? 'active'" th:href="@{/admin/users/{id}(id=${user.id},tab='activity')}">Activity</a>
+        </li>
+    </ul>
+
+    <!-- ===================================================== Overview -->
+    <div class="row g-3" th:if="${tab == 'overview'}">
         <div class="col-lg-6">
             <div class="admin-form-section">
                 <h2>Profile</h2>
@@ -31,8 +53,86 @@
                     <dt class="col-sm-4 text-muted">Role</dt><dd class="col-sm-8"><span class="badge" th:classappend="'badge-role-' + ${user.role}" th:text="${user.role}">-</span></dd>
                     <dt class="col-sm-4 text-muted">OTP verified</dt><dd class="col-sm-8" th:text="${user.otpVerified} ? 'Yes' : 'No'">-</dd>
                     <dt class="col-sm-4 text-muted">Language</dt><dd class="col-sm-8" th:text="${user.preferredLanguage}">-</dd>
-                    <dt class="col-sm-4 text-muted">Joined</dt><dd class="col-sm-8 text-mono" th:text="${user.createdAt}">-</dd>
+                    <dt class="col-sm-4 text-muted">Community</dt><dd class="col-sm-8" th:text="${user.communityUsername != null ? 'u/' + user.communityUsername : '—'}">-</dd>
+                    <dt class="col-sm-4 text-muted">Joined</dt><dd class="col-sm-8" th:text="${@fmt.dt(user.createdAt)}">-</dd>
                 </dl>
+            </div>
+
+            <div class="admin-form-section" th:if="${restriction != null}">
+                <h2 class="text-danger">Current restriction</h2>
+                <p class="small mb-2">
+                    <strong th:text="${restriction.type.name() == 'BAN' ? 'Banned permanently' : 'Suspended until ' + @fmt.dt(restriction.endsAt)}">Suspended</strong>
+                    — <span th:text="${restriction.reason}">reason</span>
+                </p>
+                <form method="post" th:action="@{/admin/users/{id}/lift(id=${user.id})}" class="d-flex gap-2">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason for lifting (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-success text-nowrap"><i class="bi bi-unlock"></i> Lift</button>
+                </form>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Suspend</h2>
+                <p class="small text-muted">Blocks login and every write (posting, reviewing, ordering, messaging…) and signs the user out.</p>
+                <form method="post" th:action="@{/admin/users/{id}/suspend(id=${user.id})}" class="row g-2">
+                    <div class="col-md-5">
+                        <select name="duration" class="form-select form-select-sm" required>
+                            <option value="D1">1 day</option>
+                            <option value="D7" selected>7 days</option>
+                            <option value="D30">30 days</option>
+                            <option value="CUSTOM">Custom end…</option>
+                        </select>
+                    </div>
+                    <div class="col-md-7">
+                        <input type="datetime-local" name="customEnd" class="form-control form-control-sm" title="Custom end (Bangladesh time)"/>
+                    </div>
+                    <div class="col-md-9">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (shown to the user)" required maxlength="1000"/>
+                    </div>
+                    <div class="col-md-3"><button class="btn btn-sm btn-warning w-100">Suspend</button></div>
+                </form>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Ban</h2>
+                <form method="post" th:action="@{/admin/users/{id}/ban(id=${user.id})}" class="d-flex gap-2"
+                      onsubmit="return confirm('Ban this account permanently? The user is signed out and can no longer log in.');">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (shown to the user)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-danger text-nowrap"><i class="bi bi-slash-circle"></i> Ban</button>
+                </form>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Force logout</h2>
+                <form method="post" th:action="@{/admin/users/{id}/force-logout(id=${user.id})}" class="d-flex gap-2">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-box-arrow-right"></i> Revoke sessions</button>
+                </form>
+                <div class="form-text">Revokes every refresh token; the user is signed out once the current access token expires.</div>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Change role</h2>
+                <p class="small text-muted mb-2">MODERATOR keeps the account type and adds access to the admin panel's
+                    Community section (not for admin accounts or accounts without a password) — same as Community → Moderators.</p>
+                <form method="post" th:action="@{/admin/users/{id}/role(id=${user.id})}" class="row g-2"
+                      onsubmit="return confirm('Change this account\'s role?');">
+                    <div class="col-md-4">
+                        <select name="role" class="form-select form-select-sm" required>
+                            <optgroup label="Account type">
+                                <option th:each="r : ${roles}" th:value="${r}" th:text="${r}" th:selected="${r == user.role}"></option>
+                            </optgroup>
+                            <optgroup label="Community staff">
+                                <option th:unless="${user.moderator}" value="MODERATOR"
+                                        th:disabled="${user.role.name() == 'ADMIN' or user.passwordHash == null}">MODERATOR</option>
+                                <option th:if="${user.moderator}" value="REMOVE_MODERATOR">Remove MODERATOR</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                    </div>
+                    <div class="col-md-3"><button class="btn btn-sm btn-outline-primary w-100">Change</button></div>
+                </form>
             </div>
 
             <div class="admin-form-section">
@@ -56,6 +156,211 @@
                         <span class="text-muted"> — <span th:text="${b.city.name}">City</span></span>
                     </li>
                 </ul>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Last logins</h2>
+                <table class="admin-table">
+                    <thead><tr><th>When</th><th>Where</th><th>Result</th><th>IP</th></tr></thead>
+                    <tbody>
+                    <tr th:each="l : ${logins}">
+                        <td class="small" th:text="${@fmt.dt(l.createdAt)}">-</td>
+                        <td class="small" th:text="${l.channel == 'ADMIN' ? 'Admin panel' : 'App'}">App</td>
+                        <td><span class="badge" th:classappend="${l.outcome == 'SUCCESS'} ? 'text-bg-success' : 'text-bg-danger'"
+                                  th:text="${l.outcome == 'SUCCESS' ? 'OK' : 'Refused (restricted)'}">OK</span></td>
+                        <td class="small text-mono" th:text="${l.ipAddress} ?: '—'" th:title="${l.userAgent}">-</td>
+                    </tr>
+                    <tr th:if="${logins.isEmpty()}"><td colspan="4" class="admin-table-empty">No logins recorded yet (tracking started with this release).</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Account restrictions</h2>
+                <table class="admin-table">
+                    <thead><tr><th>Type</th><th>State</th><th>Reason</th><th>From</th><th>Until</th></tr></thead>
+                    <tbody>
+                    <tr th:each="r : ${restrictions}">
+                        <td><span class="badge" th:classappend="${r.type.name() == 'BAN'} ? 'text-bg-danger' : 'text-bg-warning'" th:text="${r.type}">SUSPEND</span></td>
+                        <td class="small" th:text="${r.state()}">ACTIVE</td>
+                        <td class="small">
+                            <span th:text="${r.reason}">reason</span>
+                            <div th:if="${r.liftReason != null}" class="text-muted" th:text="'Lifted: ' + ${r.liftReason}">lifted</div>
+                        </td>
+                        <td class="small" th:text="${@fmt.dt(r.startsAt)}">-</td>
+                        <td class="small" th:text="${r.endsAt == null ? 'permanent' : @fmt.dt(r.endsAt)}">-</td>
+                    </tr>
+                    <tr th:if="${restrictions.isEmpty()}"><td colspan="5" class="admin-table-empty">No suspensions or bans.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Audit history</h2>
+                <ul class="list-unstyled small mb-0">
+                    <li th:each="a : ${audit}" class="py-1 border-bottom">
+                        <span class="badge text-bg-secondary" th:text="${a.action}">ACTION</span>
+                        <span class="text-muted" th:text="${@fmt.dt(a.createdAt)} + ' · ' + (${a.actorRole} ?: '')">date</span>
+                        <div th:text="${a.reason ?: a.notes}">reason</div>
+                    </li>
+                    <li th:if="${audit.isEmpty()}" class="text-muted">Nothing yet.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================== Activity -->
+    <div th:if="${tab == 'activity'}" th:with="a=${activity}">
+        <div class="admin-stat-grid mb-3">
+            <div class="admin-stat-card"><div class="admin-stat-label">Reviews</div><div class="admin-stat-value" th:text="${a.counts()['reviews']}">0</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-label">Community posts</div><div class="admin-stat-value" th:text="${a.counts()['posts']}">0</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-label">Comments</div><div class="admin-stat-value" th:text="${a.counts()['comments']}">0</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-label">Orders</div><div class="admin-stat-value" th:text="${a.counts()['orders']}">0</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-label">Bookings</div><div class="admin-stat-value" th:text="${a.counts()['bookings']}">0</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-label">Reports filed</div><div class="admin-stat-value" th:text="${a.counts()['reports_filed']}">0</div></div>
+        </div>
+        <p class="small text-muted">Latest 20 of each. Logins and account restrictions are on the Overview tab.</p>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="admin-form-section">
+                    <h2>Reviews</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Business</th><th>Rating</th><th>Review</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="r : ${a.reviews()}">
+                            <td class="small"><a th:href="@{/admin/businesses/{id}(id=${r['business_id']})}" th:text="${r['business_name']} ?: 'Business'">Biz</a></td>
+                            <td class="small" th:text="${r['rating']} + '/5'">5/5</td>
+                            <td class="small">
+                                <a th:href="@{/admin/reviews/{id}(id=${r['id']})}" th:text="${#strings.abbreviate(r['content'] ?: '(no text)', 80)}">text</a>
+                                <span th:if="${r['deleted_at'] != null}" class="badge text-bg-secondary">deleted</span>
+                                <span th:unless="${r['deleted_at'] != null}" class="badge text-bg-light border" th:text="${r['visibility_status']}">RECOMMENDED</span>
+                            </td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.reviews().isEmpty()}"><td colspan="4" class="admin-table-empty">No reviews.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Community posts</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Post</th><th>Status</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="p : ${a.posts()}">
+                            <td class="small"><a th:href="@{/admin/community/posts/{id}(id=${p['id']})}"
+                                                 th:text="${@fmt.snippet(p['title'], p['body'], 80)}">post</a></td>
+                            <td class="small" th:text="${p['deleted_at'] != null ? 'DELETED' : p['status']}">ACTIVE</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(p['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.posts().isEmpty()}"><td colspan="3" class="admin-table-empty">No posts.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Community comments</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Comment</th><th>Status</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="c : ${a.comments()}">
+                            <td class="small"><a th:href="@{/admin/community/posts/{id}(id=${c['post_id']})}"
+                                                 th:text="${#strings.abbreviate(c['content'] ?: '', 80)}">comment</a></td>
+                            <td class="small" th:text="${c['status']}">ACTIVE</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(c['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.comments().isEmpty()}"><td colspan="3" class="admin-table-empty">No comments.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Past community restrictions</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Type</th><th>Status</th><th>Reason</th><th>Until</th></tr></thead>
+                        <tbody>
+                        <tr th:each="r : ${a.communityRestrictions()}">
+                            <td class="small" th:text="${r['type']}">MUTE</td>
+                            <td class="small" th:text="${r['status']}">ACTIVE</td>
+                            <td class="small" th:text="${r['reason']}">reason</td>
+                            <td class="small" th:text="${r['ends_at'] == null ? '—' : @fmt.dt(r['ends_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.communityRestrictions().isEmpty()}"><td colspan="4" class="admin-table-empty">None.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="admin-form-section">
+                    <h2>Orders</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Order</th><th>Business</th><th>Total</th><th>Status</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="o : ${a.orders()}">
+                            <td class="small text-mono" th:text="${o['order_number']}">#</td>
+                            <td class="small"><a th:href="@{/admin/businesses/{id}(id=${o['business_id']})}" th:text="${o['business_name']} ?: 'Business'">Biz</a></td>
+                            <td class="small" th:text="'৳' + ${o['total_amount']}">৳0</td>
+                            <td class="small" th:text="${o['status']}">PENDING</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(o['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.orders().isEmpty()}"><td colspan="5" class="admin-table-empty">No orders.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Bookings</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Business</th><th>Slot</th><th>Status</th><th>Booked</th></tr></thead>
+                        <tbody>
+                        <tr th:each="k : ${a.bookings()}">
+                            <td class="small"><a th:href="@{/admin/businesses/{id}(id=${k['business_id']})}" th:text="${k['business_name']} ?: 'Business'">Biz</a></td>
+                            <td class="small text-nowrap" th:text="${#temporals.format(k['slot_start'].toLocalDateTime(), 'd MMM yyyy, h:mm a')}">slot</td>
+                            <td class="small" th:text="${k['status']}">PENDING</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(k['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.bookings().isEmpty()}"><td colspan="4" class="admin-table-empty">No bookings.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Reports filed</h2>
+                    <table class="admin-table">
+                        <thead><tr><th>Ref</th><th>Target</th><th>Reason</th><th>Status</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="r : ${a.reportsFiled()}">
+                            <td class="small text-mono" th:text="${r['reference_code']}">R-1</td>
+                            <td class="small" th:text="${r['target_type']}">REVIEW</td>
+                            <td class="small" th:text="${r['reason']}">SPAM</td>
+                            <td class="small" th:text="${r['status']}">PENDING</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.reportsFiled().isEmpty()}"><td colspan="5" class="admin-table-empty">None.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Reports received</h2>
+                    <div class="small text-muted mb-2">Reports against this user's reviews, posts, comments, community profile and listings.</div>
+                    <table class="admin-table">
+                        <thead><tr><th>Ref</th><th>Target</th><th>Reason</th><th>Status</th><th>When</th></tr></thead>
+                        <tbody>
+                        <tr th:each="r : ${a.reportsReceived()}">
+                            <td class="small text-mono" th:text="${r['reference_code']}">R-1</td>
+                            <td class="small" th:text="${r['target_type']}">REVIEW</td>
+                            <td class="small" th:text="${r['reason']}">SPAM</td>
+                            <td class="small" th:text="${r['status']}">PENDING</td>
+                            <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                        </tr>
+                        <tr th:if="${a.reportsReceived().isEmpty()}"><td colspan="5" class="admin-table-empty">None.</td></tr>
+                        </tbody>
+                    </table>
+                    <a class="small" th:href="@{/admin/reports}">Open the reports queue →</a>
+                </div>
             </div>
         </div>
     </div>

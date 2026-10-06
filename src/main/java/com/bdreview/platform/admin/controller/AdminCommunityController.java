@@ -12,7 +12,6 @@ import com.bdreview.platform.community.moderation.CommunityModerationService.Res
 import com.bdreview.platform.community.settings.CommunitySettings;
 import com.bdreview.platform.community.settings.CommunitySettingsService;
 import com.bdreview.platform.community.settings.CommunityTopicService;
-import com.bdreview.platform.community.settings.FeatureFlagService;
 import com.bdreview.platform.report.ReportTargetType;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -46,20 +45,18 @@ public class AdminCommunityController {
     private final CommunitySettingsService settingsService;
     private final CommunityTopicService topicService;
     private final CommunityAnnouncementService announcementService;
-    private final FeatureFlagService featureFlags;
     private final UserRepository userRepository;
     private final AreaRepository areaRepository;
 
     public AdminCommunityController(CommunityAdminQueryService queries, CommunityModerationService moderation,
                                     CommunitySettingsService settingsService, CommunityTopicService topicService,
-                                    CommunityAnnouncementService announcementService, FeatureFlagService featureFlags,
+                                    CommunityAnnouncementService announcementService,
                                     UserRepository userRepository, AreaRepository areaRepository) {
         this.queries = queries;
         this.moderation = moderation;
         this.settingsService = settingsService;
         this.topicService = topicService;
         this.announcementService = announcementService;
-        this.featureFlags = featureFlags;
         this.userRepository = userRepository;
         this.areaRepository = areaRepository;
     }
@@ -399,8 +396,6 @@ public class AdminCommunityController {
         }
         model.addAttribute("allTopics", topicService.list());
         model.addAttribute("areas", areaRepository.findAllWithCity());
-        model.addAttribute("nidDefault", featureFlags.nidVerificationDefault());
-        model.addAttribute("nidEffective", featureFlags.nidVerificationEnabled());
         model.addAttribute("active", "c-settings");
         return "admin/community/settings";
     }
@@ -411,14 +406,12 @@ public class AdminCommunityController {
                                @RequestParam(required = false) String bannedWordsText,
                                @RequestParam(required = false) String reasonTemplatesText,
                                @RequestParam(required = false) List<UUID> allowedAreaIds,
-                               @RequestParam(required = false) String nidMode,
                                @RequestParam(required = false) String changeReason,
                                RedirectAttributes ra) {
         settings.getContent().setBannedWords(lines(bannedWordsText, true));
         settings.setReasonTemplates(lines(reasonTemplatesText, false));
         settings.getAreas().setAllowedAreaIds(allowedAreaIds == null ? new ArrayList<>() : new ArrayList<>(allowedAreaIds));
-        settings.getFeatures().setNidVerificationEnabled(
-                "on".equals(nidMode) ? Boolean.TRUE : "off".equals(nidMode) ? Boolean.FALSE : null);
+        settings.getFeatures().setNidVerificationEnabled(null);
         try {
             settingsService.save(settings, changeReason);
             ra.addFlashAttribute("successMessage", "Community settings saved — they apply to the next request.");

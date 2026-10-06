@@ -27,6 +27,10 @@
             <option value="">All roles</option>
             <option th:each="r : ${roles}" th:value="${r}" th:text="${r}" th:selected="${r == role}"></option>
         </select>
+        <select name="status" class="form-select form-select-sm" style="max-width:180px;">
+            <option value="">Any status</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${#strings.capitalize(#strings.toLowerCase(s))}" th:selected="${s == status}"></option>
+        </select>
         <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i> Filter</button>
     </form>
 
@@ -37,6 +41,7 @@
                 <th>Phone</th>
                 <th>Name</th>
                 <th>Role</th>
+                <th>Status</th>
                 <th>OTP Verified</th>
                 <th>Language</th>
                 <th>Created</th>
@@ -48,18 +53,22 @@
                 <td class="text-mono" th:text="${u.phoneNumber}">-</td>
                 <td th:text="${u.name} ?: '—'">-</td>
                 <td><span class="badge" th:classappend="'badge-role-' + ${u.role}" th:text="${u.role}">-</span></td>
+                <td th:with="st=${accountStatus[u.id] ?: 'ACTIVE'}">
+                    <span class="badge" th:text="${st}"
+                          th:classappend="${st == 'ACTIVE'} ? 'text-bg-success' : (${st == 'BANNED'} ? 'text-bg-danger' : 'text-bg-warning')">ACTIVE</span>
+                </td>
                 <td>
                     <i class="bi bi-check-circle-fill text-success" th:if="${u.otpVerified}"></i>
                     <i class="bi bi-x-circle text-muted" th:unless="${u.otpVerified}"></i>
                 </td>
                 <td th:text="${u.preferredLanguage}">-</td>
-                <td class="text-mono" th:text="${u.createdAt}">-</td>
+                <td class="small" th:text="${@fmt.dt(u.createdAt)}">-</td>
                 <td class="text-end">
                     <a th:href="@{/admin/users/{id}(id=${u.id})}" class="btn btn-sm btn-outline-secondary">View</a>
                 </td>
             </tr>
             <tr th:if="${results.content.isEmpty()}">
-                <td colspan="7" class="admin-table-empty">No users found.</td>
+                <td colspan="8" class="admin-table-empty">No users found.</td>
             </tr>
             </tbody>
         </table>
@@ -67,9 +76,9 @@
             <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
             <div class="btn-group btn-group-sm">
                 <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
-                   th:href="@{/admin/users(query=${query},role=${role},page=${results.number - 1})}">Previous</a>
+                   th:href="@{/admin/users(query=${query},role=${role},status=${status},page=${results.number - 1})}">Previous</a>
                 <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
-                   th:href="@{/admin/users(query=${query},role=${role},page=${results.number + 1})}">Next</a>
+                   th:href="@{/admin/users(query=${query},role=${role},status=${status},page=${results.number + 1})}">Next</a>
             </div>
         </div>
     </div>

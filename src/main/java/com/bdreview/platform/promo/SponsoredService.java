@@ -1,5 +1,7 @@
 package com.bdreview.platform.promo;
 
+import com.bdreview.platform.features.FeatureFlagService;
+import com.bdreview.platform.features.PlatformFeature;
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.business.BusinessResponse;
@@ -61,11 +63,12 @@ public class SponsoredService {
     private final PromoAccess access;
     private final PromoCounters counters;
     private final SearchReferenceData referenceData;
+    private final FeatureFlagService featureFlags;
 
     public SponsoredService(BoostRepository boostRepository, BusinessPostRepository businessPostRepository,
                             CommunityPostRepository communityPostRepository, BusinessRepository businessRepository,
                             BusinessService businessService, OfferRepository offerRepository, PromoAccess access,
-                            PromoCounters counters, SearchReferenceData referenceData) {
+                            PromoCounters counters, SearchReferenceData referenceData, FeatureFlagService featureFlags) {
         this.boostRepository = boostRepository;
         this.businessPostRepository = businessPostRepository;
         this.communityPostRepository = communityPostRepository;
@@ -75,6 +78,12 @@ public class SponsoredService {
         this.access = access;
         this.counters = counters;
         this.referenceData = referenceData;
+        this.featureFlags = featureFlags;
+    }
+
+    /** V63: the platform-wide Promotions switch removes every sponsored slot too, not just the promo endpoints. */
+    private boolean promotionsOn() {
+        return featureFlags.isEnabled(PlatformFeature.PROMOTIONS);
     }
 
     // -----------------------------------------------------------------
@@ -83,7 +92,7 @@ public class SponsoredService {
 
     /** Community feed: up to {@code count} boosts, one per business, never any of {@code excludePostIds}. */
     public List<Served> forFeed(Viewer viewer, int count, Collection<UUID> excludePostIds) {
-        if (count <= 0 || !access.settings().isBoostsEnabled()) {
+        if (count <= 0 || !promotionsOn() || !access.settings().isBoostsEnabled()) {
             return List.of();
         }
         return pick(viewer, count, s -> !excludePostIds.contains(s.post().getPostId()));
@@ -92,7 +101,7 @@ public class SponsoredService {
     /** Home "Featured nearby" carousel (max 6). Empty when the setting is off or nothing is eligible. */
     public List<SponsoredBusiness> featuredNearby(Viewer viewer) {
         CommunitySettings.Promotions p = access.settings();
-        if (!p.isBoostsEnabled() || !p.isFeaturedNearbyEnabled()) {
+        if (!promotionsOn() || !p.isBoostsEnabled() || !p.isFeaturedNearbyEnabled()) {
             return List.of();
         }
         return toBusinesses(pick(viewer, FEATURED_MAX, s -> true));
@@ -107,7 +116,7 @@ public class SponsoredService {
     public Optional<SponsoredBusiness> forSearch(Viewer viewer, Set<String> categoryKinds, UUID queryAreaId,
                                                  Set<UUID> organicBusinessIds) {
         CommunitySettings.Promotions p = access.settings();
-        if (!p.isBoostsEnabled() || !p.isSponsoredInSearch() || (categoryKinds.isEmpty() && queryAreaId == null)) {
+        if (!promotionsOn() || !p.isBoostsEnabled() || !p.isSponsoredInSearch() || (categoryKinds.isEmpty() && queryAreaId == null)) {
             return Optional.empty();
         }
         List<Served> served = pick(viewer, 1, s -> {

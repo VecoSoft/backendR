@@ -5,6 +5,9 @@ import com.bdreview.platform.business.BusinessRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.ResourceNotFoundException;
+import com.bdreview.platform.photomod.PhotoModerationService;
+import com.bdreview.platform.photomod.PhotoSource;
+import com.bdreview.platform.photomod.PhotoStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,13 +26,16 @@ public class BusinessPhotoService {
     private final BusinessPhotoRepository photoRepository;
     private final BusinessRepository businessRepository;
     private final ObjectStorageClient objectStorageClient;
+    private final PhotoModerationService photoModeration;
 
     public BusinessPhotoService(BusinessPhotoRepository photoRepository,
                                  BusinessRepository businessRepository,
-                                 ObjectStorageClient objectStorageClient) {
+                                 ObjectStorageClient objectStorageClient,
+                                 PhotoModerationService photoModeration) {
         this.photoRepository = photoRepository;
         this.businessRepository = businessRepository;
         this.objectStorageClient = objectStorageClient;
+        this.photoModeration = photoModeration;
     }
 
     public PreSignedUploadResponse requestUploadUrl(UUID ownerUserId, UUID businessId, String filename) {
@@ -46,13 +52,21 @@ public class BusinessPhotoService {
     public BusinessPhoto confirmUpload(UUID ownerUserId, ConfirmUploadRequest request) {
         Business business = getOwnedOrThrow(ownerUserId, request.businessId());
         int nextOrder = (int) photoRepository.countByBusinessId(business.getId());
+        // V63: PENDING (hidden from the public gallery) while photo approval is on.
+        PhotoStatus status = photoModeration.admitRow(PhotoSource.BUSINESS_PHOTO, business.getId(), business.getId(),
+                ownerUserId, request.cdnUrl());
         return photoRepository.save(BusinessPhoto.builder()
-                .businessId(business.getId()).url(request.cdnUrl()).sortOrder(nextOrder).build());
+                .businessId(business.getId()).url(request.cdnUrl()).sortOrder(nextOrder)
+                .moderationStatus(status.name()).build());
     }
 
     @Transactional
     public void delete(UUID ownerUserId, UUID businessId, UUID photoId) {
         getOwnedOrThrow(ownerUserId, businessId);
+        photoRepository.findById(photoId).filter(p -> p.getBusinessId().equals(businessId)).ifPresent(p ->
+                photoModeration.withdrawPending(PhotoSource.BUSINESS_PHOTO, businessId,
+                        photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId).stream()
+                                .filter(other -> !other.getId().equals(photoId)).map(BusinessPhoto::getUrl).toList()));
         photoRepository.deleteByIdAndBusinessId(photoId, businessId);
     }
 
@@ -82,8 +96,16 @@ public class BusinessPhotoService {
         return photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
     }
 
-    public List<BusinessPhoto> gallery(UUID businessId) {
-        return photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+    /**
+     * Public gallery: APPROVED photos only. The listing's owner gets every photo with its
+     * {@code moderationStatus}, so their dashboard can show "Waiting for review" (and reorder
+     * still sees every id).
+     */
+    public List<BusinessPhoto> gallery(UUID businessId, UUID requesterUserId) {
+        List<BusinessPhoto> all = photoRepository.findByBusinessIdOrderBySortOrderAsc(businessId);
+        boolean owner = requesterUserId != null && businessRepository.findById(businessId)
+                .map(b -> requesterUserId.equals(b.getOwnerUserId())).orElse(false);
+        return owner ? all : all.stream().filter(BusinessPhoto::isApproved).toList();
     }
 
     private Business getOwnedOrThrow(UUID ownerUserId, UUID businessId) {

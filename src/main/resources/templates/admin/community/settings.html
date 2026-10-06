@@ -176,25 +176,11 @@
                       th:text="${@fmt.lines(settings.reasonTemplates)}"></textarea>
         </div>
 
-        <div class="admin-card">
-            <h2 class="h6 fw-bold mb-3">Feature flags</h2>
-            <div class="row g-3 align-items-end">
-                <div class="col-md-5">
-                    <label class="form-label small">NID verification</label>
-                    <select name="nidMode" class="form-select form-select-sm">
-                        <option value="" th:selected="${settings.features.nidVerificationEnabled == null}"
-                                th:text="'Deployment default (' + (${nidDefault} ? 'on' : 'off') + ')'">Default</option>
-                        <option value="on" th:selected="${settings.features.nidVerificationEnabled == true}">On</option>
-                        <option value="off" th:selected="${settings.features.nidVerificationEnabled == false}">Off</option>
-                    </select>
-                </div>
-                <div class="col-md-7 small">
-                    Currently <span class="badge" th:classappend="${nidEffective} ? 'text-bg-success' : 'text-bg-secondary'"
-                                    th:text="${nidEffective} ? 'ON' : 'OFF'">OFF</span>.
-                    While off, NID endpoints answer 404 “Feature disabled”, NID uploads are refused, stored NID images aren't served,
-                    and no flow asks for NID. Stored NID data is kept.
-                </div>
-            </div>
+        <div class="admin-card small">
+            <h2 class="h6 fw-bold mb-2">Feature flags</h2>
+            NID verification and the other platform-wide switches (ordering, bookings, community, promotions,
+            owner chat, sign-ups, maintenance mode) are managed in
+            <a th:href="@{/admin/settings}">System → Settings</a>.
         </div>
 
         <div class="admin-card d-flex flex-wrap gap-2 align-items-center">

@@ -103,6 +103,14 @@ public class BusinessService {
         this.self = self;
     }
 
+    /** V63 photo moderation — setter-injected (like SmartSearchService's sponsored hook) to keep the constructor stable. */
+    private com.bdreview.platform.photomod.PhotoModerationService photoModeration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPhotoModeration(com.bdreview.platform.photomod.PhotoModerationService photoModeration) {
+        this.photoModeration = photoModeration;
+    }
+
     /** Only a BUSINESS_OWNER account can list a business (spec update: two-account model, mirrors biz.yelp.com being the only place listings are managed). */
     @Transactional
     public BusinessResponse create(UUID ownerUserId, CreateBusinessRequest request) {
@@ -150,8 +158,7 @@ public class BusinessService {
                 .operatingHours(request.operatingHours())
                 .description(request.description())
                 .establishedYear(request.establishedYear())
-                .coverPhotoUrl(request.coverPhotoUrl())
-                .logoUrl(request.logoUrl())
+                // V63: cover/logo go live only once approved (see photoModeration.admitField below).
                 .websiteUrl(blankToNull(request.websiteUrl()))
                 .whatsappNumber(normalizePhoneOrNull(request.whatsappNumber()))
                 .email(blankToNull(request.email()))
@@ -163,6 +170,11 @@ public class BusinessService {
                 .build();
 
         Business saved = businessRepository.save(business);
+        saved.setCoverPhotoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.COVER,
+                saved.getId(), saved.getId(), ownerUserId, null, request.coverPhotoUrl()));
+        saved.setLogoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.LOGO,
+                saved.getId(), saved.getId(), ownerUserId, null, request.logoUrl()));
+        saved = businessRepository.save(saved);
         return BusinessResponse.from(saved, photoUrlsFor(saved, List.of()), isClaimed(saved.getOwnerUserId()));
     }
 
@@ -189,8 +201,11 @@ public class BusinessService {
         business.setOperatingHours(request.operatingHours());
         business.setDescription(request.description());
         business.setEstablishedYear(request.establishedYear());
-        business.setCoverPhotoUrl(request.coverPhotoUrl());
-        business.setLogoUrl(request.logoUrl());
+        // V63: a new cover/logo waits for moderation; the current one stays live meanwhile.
+        business.setCoverPhotoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.COVER,
+                business.getId(), business.getId(), requesterUserId, business.getCoverPhotoUrl(), request.coverPhotoUrl()));
+        business.setLogoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.LOGO,
+                business.getId(), business.getId(), requesterUserId, business.getLogoUrl(), request.logoUrl()));
         business.setWebsiteUrl(blankToNull(request.websiteUrl()));
         business.setWhatsappNumber(normalizePhoneOrNull(request.whatsappNumber()));
         business.setEmail(blankToNull(request.email()));
@@ -203,7 +218,7 @@ public class BusinessService {
 
         Business saved = businessRepository.save(business);
         List<String> galleryUrls = businessPhotoRepository.findByBusinessIdOrderBySortOrderAsc(saved.getId())
-                .stream().map(BusinessPhoto::getUrl).toList();
+                .stream().filter(BusinessPhoto::isApproved).map(BusinessPhoto::getUrl).toList();
         return BusinessResponse.from(saved, photoUrlsFor(saved, galleryUrls), isClaimed(saved.getOwnerUserId()),
                 brandSummariesFor(List.of(saved)).get(saved.getId()));
     }
@@ -378,7 +393,7 @@ public class BusinessService {
         Business business = businessRepository.findBySlugAndDeletedAtIsNull(slug)
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found: " + slug));
         List<String> galleryUrls = businessPhotoRepository.findByBusinessIdOrderBySortOrderAsc(business.getId())
-                .stream().map(BusinessPhoto::getUrl).toList();
+                .stream().filter(BusinessPhoto::isApproved).map(BusinessPhoto::getUrl).toList();
         // Detail view carries the category-module presence flags (one cheap EXISTS
         // per module) plus the has-updates flag so the public page can pick tabs
         // without loading any module or updates rows.
@@ -534,6 +549,9 @@ public class BusinessService {
         }
         Map<UUID, List<String>> byBusiness = new HashMap<>();
         for (BusinessPhoto photo : businessPhotoRepository.findByBusinessIdInOrderBySortOrderAsc(ids)) {
+            if (!photo.isApproved()) {
+                continue; // V63: pending/rejected photos never reach a public response
+            }
             byBusiness.computeIfAbsent(photo.getBusinessId(), k -> new ArrayList<>()).add(photo.getUrl());
         }
         return byBusiness;

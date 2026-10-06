@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.config;
 
+import com.bdreview.platform.accountcontrol.AccountControlService;
 import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.auth.UserRole;
@@ -41,10 +42,13 @@ public class AdminSecurityConfig {
 
     private final AdminAuthenticationProvider adminAuthenticationProvider;
     private final UserRepository userRepository;
+    private final AccountControlService accountControl;
 
-    public AdminSecurityConfig(AdminAuthenticationProvider adminAuthenticationProvider, UserRepository userRepository) {
+    public AdminSecurityConfig(AdminAuthenticationProvider adminAuthenticationProvider, UserRepository userRepository,
+                               AccountControlService accountControl) {
         this.adminAuthenticationProvider = adminAuthenticationProvider;
         this.userRepository = userRepository;
+        this.accountControl = accountControl;
     }
 
     @Bean
@@ -95,7 +99,7 @@ public class AdminSecurityConfig {
 
     /**
      * Drops a session whose account no longer holds the role it logged in with (moderator removed,
-     * admin demoted) — the next request lands on the login page.
+     * admin demoted, account suspended/banned) — the next request lands on the login page.
      */
     private OncePerRequestFilter staffRevalidationFilter() {
         return new OncePerRequestFilter() {
@@ -109,7 +113,8 @@ public class AdminSecurityConfig {
                     boolean stillValid;
                     try {
                         User user = userRepository.findById(UUID.fromString(auth.getName())).orElse(null);
-                        stillValid = user != null && (claimsAdmin ? user.getRole() == UserRole.ADMIN : user.isModerator());
+                        stillValid = user != null && (claimsAdmin ? user.getRole() == UserRole.ADMIN : user.isModerator())
+                                && accountControl.inEffect(user.getId()).isEmpty();
                     } catch (IllegalArgumentException e) {
                         stillValid = false;
                     }

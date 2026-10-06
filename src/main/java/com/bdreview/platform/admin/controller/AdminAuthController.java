@@ -19,9 +19,14 @@ public class AdminAuthController {
     public String loginPage(@RequestParam(required = false) String error,
                              @RequestParam(required = false) String logout,
                              @RequestParam(required = false) String denied,
+                             jakarta.servlet.http.HttpServletRequest request,
                              org.springframework.ui.Model model) {
         if (error != null) {
-            model.addAttribute("errorMessage", "Invalid phone number or password.");
+            // A suspended/banned staff account (V63) is told why, not just "invalid password".
+            Object last = request.getSession(false) == null ? null
+                    : request.getSession(false).getAttribute(org.springframework.security.web.WebAttributes.AUTHENTICATION_EXCEPTION);
+            model.addAttribute("errorMessage", last instanceof org.springframework.security.authentication.LockedException locked
+                    ? locked.getMessage() : "Invalid phone number or password.");
         }
         if (logout != null) {
             model.addAttribute("infoMessage", "You have been logged out.");

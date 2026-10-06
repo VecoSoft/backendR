@@ -39,6 +39,19 @@ public record PublicCommunitySettings(
                          int commentMin, int commentMax, int maxLinksPerPost) {
     }
 
-    public record Features(boolean nidVerificationEnabled) {
+    /**
+     * Platform feature flags (V63, System → Settings in the admin panel) — effective values.
+     * A disabled feature's endpoints answer 404 "Feature disabled"; maintenance mode answers 503
+     * with {@code maintenanceMessage} everywhere except login and this endpoint.
+     */
+    public record Features(boolean nidVerificationEnabled,
+                           boolean orderingEnabled,
+                           boolean bookingsEnabled,
+                           boolean communityEnabled,
+                           boolean promotionsEnabled,
+                           boolean ownerChatEnabled,
+                           boolean newSignupsEnabled,
+                           boolean maintenanceMode,
+                           String maintenanceMessage) {
     }
 }

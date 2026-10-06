@@ -32,6 +32,8 @@ public class AdminBusinessController {
     private final ReviewRepository reviewRepository;
     private final BusinessPhotoRepository businessPhotoRepository;
     private final BusinessReviewSummaryRepository businessReviewSummaryRepository;
+    private final com.bdreview.platform.photomod.PhotoModerationService photoModeration;
+    private final com.bdreview.platform.gallery.ObjectStorageClient objectStorageClient;
 
     public AdminBusinessController(AdminBusinessService adminBusinessService,
                                     CategoryRepository categoryRepository,
@@ -41,7 +43,9 @@ public class AdminBusinessController {
                                     BrandRepository brandRepository,
                                     ReviewRepository reviewRepository,
                                     BusinessPhotoRepository businessPhotoRepository,
-                                    BusinessReviewSummaryRepository businessReviewSummaryRepository) {
+                                    BusinessReviewSummaryRepository businessReviewSummaryRepository,
+                                    com.bdreview.platform.photomod.PhotoModerationService photoModeration,
+                                    com.bdreview.platform.gallery.ObjectStorageClient objectStorageClient) {
         this.adminBusinessService = adminBusinessService;
         this.categoryRepository = categoryRepository;
         this.cityRepository = cityRepository;
@@ -51,6 +55,8 @@ public class AdminBusinessController {
         this.reviewRepository = reviewRepository;
         this.businessPhotoRepository = businessPhotoRepository;
         this.businessReviewSummaryRepository = businessReviewSummaryRepository;
+        this.photoModeration = photoModeration;
+        this.objectStorageClient = objectStorageClient;
     }
 
     @GetMapping
@@ -82,10 +88,56 @@ public class AdminBusinessController {
         model.addAttribute("business", business);
         model.addAttribute("reviews",
                 reviewRepository.findByBusinessIdAndDeletedAtIsNull(id, PageRequest.of(0, 10)));
-        model.addAttribute("photos", businessPhotoRepository.findByBusinessIdOrderBySortOrderAsc(id));
+        model.addAttribute("photos", photoModeration.galleryWithStatus(id));
+        model.addAttribute("pendingPhotos", photoModeration.pendingForBusiness(id));
         model.addAttribute("summary", businessReviewSummaryRepository.findByBusinessId(id).orElse(null));
         model.addAttribute("active", "businesses");
         return "admin/businesses/view";
+    }
+
+    // -----------------------------------------------------------------
+    // V63 Photos box: per-photo delete / set as cover (each with a reason, audited)
+    // -----------------------------------------------------------------
+
+    @PostMapping("/{id}/photos/{photoId}/delete")
+    public String deletePhoto(@PathVariable UUID id, @PathVariable UUID photoId,
+                              @RequestParam(required = false) String reason, RedirectAttributes ra) {
+        try {
+            photoModeration.deleteBusinessPhoto(id, photoId, reason);
+            ra.addFlashAttribute("successMessage", "Photo deleted — its file is no longer served.");
+        } catch (RuntimeException ex) {
+            ra.addFlashAttribute("errorMessage", ex.getMessage());
+        }
+        return "redirect:/admin/businesses/" + id + "#photos";
+    }
+
+    @PostMapping("/{id}/photos/{photoId}/cover")
+    public String setCover(@PathVariable UUID id, @PathVariable UUID photoId,
+                           @RequestParam(required = false) String reason, RedirectAttributes ra) {
+        try {
+            photoModeration.setCover(id, photoId, reason);
+            ra.addFlashAttribute("successMessage", "Cover photo updated.");
+        } catch (RuntimeException ex) {
+            ra.addFlashAttribute("errorMessage", ex.getMessage());
+        }
+        return "redirect:/admin/businesses/" + id + "#photos";
+    }
+
+    /** Streams a gallery photo through the admin session — rejected files are blocked on the public URL. */
+    @GetMapping("/{id}/photos/{photoId}/image")
+    public org.springframework.http.ResponseEntity<byte[]> photoImage(@PathVariable UUID id, @PathVariable UUID photoId) {
+        var photo = businessPhotoRepository.findById(photoId).filter(p -> p.getBusinessId().equals(id))
+                .orElseThrow(() -> new com.bdreview.platform.common.ResourceNotFoundException("Photo not found"));
+        String key = com.bdreview.platform.photomod.PhotoModerationService.objectKeyOf(photo.getUrl());
+        if (key == null) {
+            return org.springframework.http.ResponseEntity.status(302).header("Location", photo.getUrl()).build();
+        }
+        String type = java.net.URLConnection.guessContentTypeFromName(key);
+        return org.springframework.http.ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .contentType(type != null ? org.springframework.http.MediaType.parseMediaType(type)
+                        : org.springframework.http.MediaType.APPLICATION_OCTET_STREAM)
+                .body(objectStorageClient.getObject(key));
     }
 
     @GetMapping("/new")

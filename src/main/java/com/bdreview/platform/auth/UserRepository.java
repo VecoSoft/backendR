@@ -58,6 +58,34 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             """)
     Page<User> search(@Param("query") String query, @Param("role") UserRole role, Pageable pageable);
 
+    /**
+     * V63 admin list with the account-status filter: {@code status} null (any), ACTIVE (no
+     * restriction in force), SUSPENDED (a suspension and no ban in force) or BANNED.
+     */
+    @Query("""
+            SELECT u FROM User u
+            WHERE (:query IS NULL OR :query = ''
+                   OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%'))
+                   OR u.phoneNumber LIKE CONCAT('%', :query, '%'))
+              AND (:role IS NULL OR u.role = :role)
+              AND (:status IS NULL
+                   OR (:status = 'BANNED' AND EXISTS (SELECT 1 FROM UserRestriction r WHERE r.userId = u.id
+                           AND r.type = com.bdreview.platform.accountcontrol.UserRestriction.Type.BAN
+                           AND r.liftedAt IS NULL AND r.startsAt <= :now))
+                   OR (:status = 'SUSPENDED'
+                       AND EXISTS (SELECT 1 FROM UserRestriction r WHERE r.userId = u.id
+                           AND r.type = com.bdreview.platform.accountcontrol.UserRestriction.Type.SUSPEND
+                           AND r.liftedAt IS NULL AND r.startsAt <= :now AND r.endsAt > :now)
+                       AND NOT EXISTS (SELECT 1 FROM UserRestriction r WHERE r.userId = u.id
+                           AND r.type = com.bdreview.platform.accountcontrol.UserRestriction.Type.BAN
+                           AND r.liftedAt IS NULL AND r.startsAt <= :now))
+                   OR (:status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM UserRestriction r WHERE r.userId = u.id
+                           AND r.liftedAt IS NULL AND r.startsAt <= :now AND (r.endsAt IS NULL OR r.endsAt > :now))))
+            ORDER BY u.createdAt DESC
+            """)
+    Page<User> adminSearch(@Param("query") String query, @Param("role") UserRole role, @Param("status") String status,
+                           @Param("now") java.time.Instant now, Pageable pageable);
+
     // -----------------------------------------------------------------
     // Community staff (V56 staff_role) — see admin.config.AdminAuthenticationProvider.
     // -----------------------------------------------------------------

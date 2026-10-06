@@ -1,5 +1,6 @@
 package com.bdreview.platform.auth;
 
+import com.bdreview.platform.accountcontrol.AccountControlService;
 import com.bdreview.platform.accountlink.AccountLinkService;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ForbiddenException;
@@ -43,6 +44,7 @@ public class AuthService {
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
     private final AccountLinkService accountLinkService;
+    private final AccountControlService accountControl;
     private final long accessTokenTtlMinutes;
     private final long refreshTokenTtlDays;
 
@@ -52,6 +54,7 @@ public class AuthService {
                         OtpService otpService,
                         PasswordEncoder passwordEncoder,
                         AccountLinkService accountLinkService,
+                        AccountControlService accountControl,
                         @Value("${app.jwt.access-token-ttl-minutes}") long accessTokenTtlMinutes,
                         @Value("${app.jwt.refresh-token-ttl-days}") long refreshTokenTtlDays) {
         this.userRepository = userRepository;
@@ -60,6 +63,7 @@ public class AuthService {
         this.otpService = otpService;
         this.passwordEncoder = passwordEncoder;
         this.accountLinkService = accountLinkService;
+        this.accountControl = accountControl;
         this.accessTokenTtlMinutes = accessTokenTtlMinutes;
         this.refreshTokenTtlDays = refreshTokenTtlDays;
     }
@@ -119,6 +123,8 @@ public class AuthService {
                 .findFirst()
                 .orElseThrow(() -> new BadRequestException("Invalid phone number or password."));
 
+        // V63: a suspended/banned account is told why and until when (only after the password matched).
+        accountControl.checkLogin(user.getId(), "APP");
         return issueNewTokenFamily(user.getId(), user.getRole());
     }
 
@@ -139,6 +145,8 @@ public class AuthService {
 
         User user = userRepository.findByPhoneNumberAndRole(phone, role)
                 .orElseThrow(() -> new BadRequestException("No account found for this phone number."));
+        // A password reset logs the user in — not a way around a suspension or ban.
+        accountControl.assertNotRestricted(user.getId());
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
@@ -162,6 +170,7 @@ public class AuthService {
                         "No linked account to switch to — create or link a business account first."));
         User partner = userRepository.findById(partnerId)
                 .orElseThrow(() -> new ForbiddenException("Linked account no longer exists"));
+        accountControl.assertNotRestricted(partner.getId());
         return issueNewTokenFamily(partner.getId(), partner.getRole());
     }
 
@@ -288,6 +297,7 @@ public class AuthService {
 
         User user = userRepository.findById(current.getUserId())
                 .orElseThrow(() -> new ForbiddenException("User no longer exists"));
+        accountControl.assertNotRestricted(user.getId());
 
         return issueToken(user.getId(), user.getRole(), current.getFamilyId());
     }

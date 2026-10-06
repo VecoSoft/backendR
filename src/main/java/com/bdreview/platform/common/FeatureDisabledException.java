@@ -5,4 +5,8 @@ public class FeatureDisabledException extends RuntimeException {
     public FeatureDisabledException() {
         super("Feature disabled");
     }
+
+    public FeatureDisabledException(String message) {
+        super(message);
+    }
 }

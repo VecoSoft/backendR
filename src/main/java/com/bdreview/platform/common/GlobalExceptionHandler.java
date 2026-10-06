@@ -55,6 +55,35 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
     }
 
+    /** Site-wide maintenance mode (V63) — 503 carrying the admin's message. */
+    @ExceptionHandler(com.bdreview.platform.features.MaintenanceModeException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleMaintenance(RuntimeException ex, HttpServletRequest req) {
+        java.util.Map<String, Object> body = errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), req);
+        body.put("code", "MAINTENANCE");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
+    }
+
+    /** Suspended/banned account (V63) — 403 plus the code, the admin's reason and the end date (null for a ban). */
+    @ExceptionHandler(com.bdreview.platform.accountcontrol.AccountRestrictedException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleAccountRestricted(
+            com.bdreview.platform.accountcontrol.AccountRestrictedException ex, HttpServletRequest req) {
+        java.util.Map<String, Object> body = errorBody(HttpStatus.FORBIDDEN, ex.getMessage(), req);
+        body.put("code", ex.code());
+        body.put("reason", ex.reason());
+        body.put("endsAt", ex.endsAt());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
+    private static java.util.Map<String, Object> errorBody(HttpStatus status, String message, HttpServletRequest req) {
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("timestamp", Instant.now());
+        body.put("status", status.value());
+        body.put("error", status.getReasonPhrase());
+        body.put("message", message);
+        body.put("path", req.getRequestURI());
+        return body;
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ApiError> handleRateLimit(RateLimitExceededException ex, HttpServletRequest req) {
         return build(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), req);

@@ -32,15 +32,7 @@
                     <option value="bn">বাংলা (Bengali)</option>
                 </select>
             </div>
-            <div class="mb-3">
-                <label class="form-label small fw-semibold">Role</label>
-                <select th:field="*{role}" class="form-select">
-                    <option value="CONSUMER">CONSUMER</option>
-                    <option value="BUSINESS_OWNER">BUSINESS_OWNER</option>
-                    <option value="ADMIN">ADMIN</option>
-                </select>
-                <div class="form-text">Changing role takes effect immediately for the next token this user issues.</div>
-            </div>
+            <div class="form-text mb-3">To change this account's role, use <strong>Change role</strong> on the user page (a reason is required and it is audited).</div>
             <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save changes</button>
         </form>
     </div>

@@ -1,9 +1,11 @@
 package com.bdreview.platform.gallery;
 
 import com.bdreview.platform.common.BadRequestException;
+import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.FeatureDisabledException;
 import com.bdreview.platform.common.ResourceNotFoundException;
-import com.bdreview.platform.community.settings.FeatureFlagService;
+import com.bdreview.platform.photomod.PhotoModerationService;
+import com.bdreview.platform.features.FeatureFlagService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.io.FileSystemResource;
@@ -30,10 +32,13 @@ public class StorageController {
 
     private final Path root;
     private final FeatureFlagService featureFlags;
+    private final PhotoModerationService photoModeration;
 
-    public StorageController(@Value("${app.storage.local-dir}") String localDir, FeatureFlagService featureFlags) {
+    public StorageController(@Value("${app.storage.local-dir}") String localDir, FeatureFlagService featureFlags,
+                             PhotoModerationService photoModeration) {
         this.root = Path.of(localDir).toAbsolutePath().normalize();
         this.featureFlags = featureFlags;
+        this.photoModeration = photoModeration;
     }
 
     @PutMapping("/upload/{*key}")
@@ -56,6 +61,12 @@ public class StorageController {
         // Reads under nid/ are ADMIN-only at the security layer; while the feature is off they 404 for everyone.
         if (isNidKey(key) && !featureFlags.nidVerificationEnabled()) {
             throw new FeatureDisabledException();
+        }
+        // V63: a pending photo is visible only to its uploader (and admins); a rejected or
+        // admin-deleted one to nobody — the file is kept for the audit trail. 404, not 403, so the
+        // response doesn't confirm the object exists.
+        if (!photoModeration.canServe(key, CurrentUser.idOrNull(), CurrentUser.hasRole("ADMIN"))) {
+            throw new ResourceNotFoundException("File not found");
         }
         Path file = resolve(key);
         if (!Files.isRegularFile(file)) {

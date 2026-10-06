@@ -4,6 +4,8 @@ import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.community.moderation.CommunityAnnouncementService;
 import com.bdreview.platform.community.moderation.CommunityRestriction;
 import com.bdreview.platform.community.moderation.CommunityRestrictionRepository;
+import com.bdreview.platform.features.FeatureFlagService;
+import com.bdreview.platform.features.PlatformFeature;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +19,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Public, read-only community configuration + the caller's own standing. Both stay reachable
+ * Public, read-only community configuration — and, since V63, the platform feature flags
+ * ({@code features}) the whole Next.js app uses to hide switched-off features. + the caller's own standing. Both stay reachable
  * while the community is in maintenance (the app needs them to render the maintenance state).
  */
 @RestController
@@ -49,8 +52,10 @@ public class CommunitySettingsController {
         postTypes.put("RECOMMENDATION", s.getPostTypes().isRecommendationEnabled());
         postTypes.put("POLL", s.getPostTypes().isPollEnabled());
         var c = s.getContent();
+        var flags = featureFlagService.effective();
         PublicCommunitySettings body = new PublicCommunitySettings(
-                s.getGeneral().isCommunityEnabled(),
+                // V63: the platform-wide Community switch turns it off regardless of the community setting.
+                s.getGeneral().isCommunityEnabled() && flags.get(PlatformFeature.COMMUNITY),
                 s.getGeneral().getMaintenanceMessage(),
                 s.getGeneral().isReadOnly(),
                 s.getGeneral().getReadOnlyMessage(),
@@ -66,7 +71,16 @@ public class CommunitySettingsController {
                         c.getQuestionTitleMax(), c.getCommentMin(), c.getCommentMax(), c.getMaxLinksPerPost()),
                 s.getAreas().getAllowedAreaIds(),
                 s.getRulesMarkdown(),
-                new PublicCommunitySettings.Features(featureFlagService.nidVerificationEnabled()),
+                new PublicCommunitySettings.Features(
+                        flags.get(PlatformFeature.NID_VERIFICATION),
+                        flags.get(PlatformFeature.ORDERING),
+                        flags.get(PlatformFeature.BOOKINGS),
+                        flags.get(PlatformFeature.COMMUNITY),
+                        flags.get(PlatformFeature.PROMOTIONS),
+                        flags.get(PlatformFeature.OWNER_CHAT),
+                        flags.get(PlatformFeature.NEW_SIGNUPS),
+                        flags.get(PlatformFeature.MAINTENANCE_MODE),
+                        flags.get(PlatformFeature.MAINTENANCE_MODE) ? featureFlagService.maintenanceMessage() : null),
                 announcementService.activeBanner().orElse(null));
         // Short browser cache only — admin changes must show up within seconds.
         return ResponseEntity.ok().cacheControl(CacheControl.noCache()).body(body);

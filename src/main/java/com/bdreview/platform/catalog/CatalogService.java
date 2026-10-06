@@ -61,6 +61,14 @@ public class CatalogService {
         this.autoReplyRepository = autoReplyRepository;
     }
 
+    /** V63 photo moderation — setter-injected (like SmartSearchService's sponsored hook) to keep the constructor stable. */
+    private com.bdreview.platform.photomod.PhotoModerationService photoModeration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPhotoModeration(com.bdreview.platform.photomod.PhotoModerationService photoModeration) {
+        this.photoModeration = photoModeration;
+    }
+
     // ================================================================
     // Detail-response summary — one cheap EXISTS per module
     // ================================================================
@@ -213,7 +221,7 @@ public class CatalogService {
         if (existing >= MAX_PER_MODULE) {
             throw new BadRequestException("This menu is full (max " + MAX_PER_MODULE + ").");
         }
-        return menuRepository.save(MenuItem.builder()
+        MenuItem saved = menuRepository.save(MenuItem.builder()
                 .businessId(businessId)
                 .name(req.name().trim())
                 .description(blankToNull(req.description()))
@@ -223,11 +231,14 @@ public class CatalogService {
                 .available(req.available() == null || req.available())
                 // Derived, not a separate toggle: a priced item is orderable.
                 .orderingEnabled(req.price() != null)
-                .photoUrl(blankToNull(req.photoUrl()))
                 .menuSection(blankToNull(req.menuSection()))
                 .popular(req.popular())
                 .sortOrder((int) existing)
                 .build());
+        // V63: the photo goes live once approved (needs the item id, hence after the first save).
+        saved.setPhotoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.MENU_ITEM,
+                saved.getId(), businessId, ownerUserId, null, req.photoUrl()));
+        return menuRepository.save(saved);
     }
 
     @Transactional
@@ -241,7 +252,8 @@ public class CatalogService {
         row.setCompareAtPrice(resolveCompareAtPrice(req.price(), req.compareAtPrice()));
         row.setAvailable(req.available() == null || req.available());
         row.setOrderingEnabled(req.price() != null);
-        row.setPhotoUrl(blankToNull(req.photoUrl()));
+        row.setPhotoUrl(photoModeration.admitField(com.bdreview.platform.photomod.PhotoSource.MENU_ITEM,
+                row.getId(), businessId, ownerUserId, row.getPhotoUrl(), req.photoUrl()));
         row.setMenuSection(blankToNull(req.menuSection()));
         row.setPopular(req.popular());
         return menuRepository.save(row);

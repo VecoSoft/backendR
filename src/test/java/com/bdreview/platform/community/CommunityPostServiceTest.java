@@ -44,6 +44,7 @@ import static org.mockito.Mockito.*;
 class CommunityPostServiceTest {
 
     @Mock CommunityPostRepository postRepository;
+    @Mock com.bdreview.platform.photomod.PhotoModerationService photoModeration;
     @Mock CommunityPostVoteRepository voteRepository;
     @Mock CommunityCommentVoteRepository commentVoteRepository;
     @Mock CommunityPostCommentRepository commentRepository;
@@ -83,6 +84,10 @@ class CommunityPostServiceTest {
                 questionPassRepository, pollRepository, pollOptionRepository,
                 pollVoteRepository, userRepository, businessRepository,
                 areaRepository, reviewRepository, objectStorageClient, communityNotifier, policy);
+        // V63: photo approval off for these unit tests — new photos are APPROVED immediately.
+        service.setPhotoModeration(photoModeration);
+        lenient().when(photoModeration.admitRow(any(), any(), any(), any(), any()))
+                .thenReturn(com.bdreview.platform.photomod.PhotoStatus.APPROVED);
         userId = UUID.randomUUID();
         // Every write now resolves the acting user first (restriction + rate-limit checks).
         lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(pseudonymousUser(userId)));

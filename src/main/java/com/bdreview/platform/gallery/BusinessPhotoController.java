@@ -45,6 +45,6 @@ public class BusinessPhotoController {
 
     @GetMapping
     public ResponseEntity<List<BusinessPhoto>> gallery(@PathVariable UUID businessId) {
-        return ResponseEntity.ok(photoService.gallery(businessId));
+        return ResponseEntity.ok(photoService.gallery(businessId, CurrentUser.idOrNull()));
     }
 }

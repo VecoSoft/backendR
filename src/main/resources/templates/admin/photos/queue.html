@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Photos - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+    <style>
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+        .photo-card { background: #fff; border: 1px solid var(--admin-border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+        .photo-card.is-selected { outline: 2px solid var(--admin-accent); }
+        .photo-thumb { position: relative; aspect-ratio: 4 / 3; background: #f1f3f5; }
+        .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .photo-thumb .form-check-input { position: absolute; top: 8px; left: 8px; width: 1.25rem; height: 1.25rem; }
+        .photo-meta { padding: 8px 10px; font-size: .8rem; flex: 1; }
+        .photo-meta .text-truncate { max-width: 100%; }
+        .photo-actions { display: flex; border-top: 1px solid var(--admin-border); }
+        .photo-actions button { flex: 1; border: 0; border-radius: 0; }
+    </style>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('photos')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Photos</h1>
+            <p>New business photos, covers, logos, menu photos, community post images and review photos.
+                <strong th:text="${pendingCount}">0</strong> waiting for review.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-card">
+        <form method="post" th:action="@{/admin/photos/settings}" class="row g-2 align-items-center">
+            <div class="col-md-4">
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="approvalRequired"
+                           name="approvalRequired" value="true" th:checked="${approvalRequired}"/>
+                    <label class="form-check-label fw-semibold" for="approvalRequired">Require approval for new photos</label>
+                </div>
+                <div class="form-text mt-0">
+                    Deployment default: <span th:text="${approvalRequiredDefault} ? 'on' : 'off'">on</span>.
+                    Off: new photos are public immediately.
+                </div>
+            </div>
+            <div class="col-md-6">
+                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason for the change (required)" required maxlength="1000"/>
+            </div>
+            <div class="col-md-2"><button class="btn btn-sm btn-outline-primary w-100">Save setting</button></div>
+        </form>
+    </div>
+
+    <form th:action="@{/admin/photos}" method="get" class="admin-toolbar">
+        <select name="status" class="form-select form-select-sm" style="max-width:180px;">
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == status}"></option>
+        </select>
+        <select name="source" class="form-select form-select-sm" style="max-width:200px;">
+            <option value="">All sources</option>
+            <option th:each="s : ${sources}" th:value="${s}" th:text="${s.label()}" th:selected="${s == source}"></option>
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+
+    <datalist id="photoReasons">
+        <option value="Meets photo guidelines"></option>
+        <option value="Not a photo of this business"></option>
+        <option value="Inappropriate or offensive content"></option>
+        <option value="Shows personal information"></option>
+        <option value="Low quality or blurry"></option>
+        <option value="Watermark or copyrighted image"></option>
+        <option value="Spam or advertising"></option>
+    </datalist>
+
+    <form method="post" th:action="@{/admin/photos/bulk}" id="photoForm">
+        <!-- Enter in the reason box must not trigger the first action button. -->
+        <button type="submit" disabled hidden aria-hidden="true"></button>
+        <input type="hidden" name="back" th:value="@{/admin/photos(status=${status},source=${source},page=${results.number})}"/>
+
+        <div class="admin-card d-flex flex-wrap gap-2 align-items-center" th:if="${!results.content.isEmpty()}">
+            <div class="form-check mb-0 me-2">
+                <input class="form-check-input" type="checkbox" id="selectAll"/>
+                <label class="form-check-label small" for="selectAll">Select all on page</label>
+            </div>
+            <input type="text" name="reason" list="photoReasons" class="form-control form-control-sm" style="max-width:360px;"
+                   placeholder="Reason (required for every action)" required maxlength="1000"/>
+            <button name="action" value="approve" class="btn btn-sm btn-success"><i class="bi bi-check2-all"></i> Approve selected</button>
+            <button name="action" value="reject" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Reject the selected photos? Their files stop being served immediately.');">
+                <i class="bi bi-x-octagon"></i> Reject selected</button>
+            <span class="small text-muted ms-auto">The reason above is also used by the per-photo buttons.</span>
+        </div>
+
+        <div class="photo-grid">
+            <div class="photo-card" th:each="p : ${results.content}">
+                <div class="photo-thumb">
+                    <a th:href="@{/admin/photos/{id}/image(id=${p.id})}" target="_blank" rel="noopener">
+                        <img th:src="@{/admin/photos/{id}/image(id=${p.id})}" loading="lazy" alt="Uploaded photo"/>
+                    </a>
+                    <input class="form-check-input photo-select" type="checkbox" name="ids" th:value="${p.id}" aria-label="Select photo"/>
+                </div>
+                <div class="photo-meta">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="badge text-bg-light border" th:text="${p.sourceType.label()}">Business gallery</span>
+                        <span class="badge" th:text="${p.status}"
+                              th:classappend="${p.status.name() == 'PENDING'} ? 'text-bg-warning' : (${p.status.name() == 'APPROVED'} ? 'text-bg-success' : 'text-bg-secondary')">PENDING</span>
+                    </div>
+                    <div class="text-truncate" th:if="${p.businessId != null}">
+                        <i class="bi bi-shop"></i>
+                        <a th:href="@{/admin/businesses/{id}(id=${p.businessId})}"
+                           th:text="${businesses[p.businessId] != null ? businesses[p.businessId].name : 'Business'}">Business</a>
+                    </div>
+                    <div class="text-truncate" th:if="${p.uploaderUserId != null}">
+                        <i class="bi bi-person"></i>
+                        <a th:href="@{/admin/users/{id}(id=${p.uploaderUserId})}"
+                           th:with="u=${uploaders[p.uploaderUserId]}"
+                           th:text="${u == null ? 'Unknown user' : (u.name != null ? u.name + ' · ' + u.phoneNumber : u.phoneNumber)}">Uploader</a>
+                    </div>
+                    <div class="text-muted" th:text="${@fmt.dt(p.createdAt)} + ' · ' + ${@fmt.age(p.createdAt)} + ' ago'">time</div>
+                    <div class="text-muted fst-italic text-truncate" th:if="${p.reason != null}" th:title="${p.reason}"
+                         th:text="'“' + ${p.reason} + '”'">reason</div>
+                </div>
+                <div class="photo-actions" th:if="${p.status.name() == 'PENDING' or p.status.name() == 'APPROVED' or p.status.name() == 'REJECTED'}">
+                    <button th:unless="${p.status.name() == 'APPROVED'}" class="btn btn-sm btn-outline-success"
+                            th:formaction="@{/admin/photos/{id}/approve(id=${p.id})}">Approve</button>
+                    <button th:unless="${p.status.name() == 'REJECTED'}" class="btn btn-sm btn-outline-danger"
+                            th:formaction="@{/admin/photos/{id}/reject(id=${p.id})}"
+                            onclick="return confirm('Reject this photo? Its file stops being served immediately.');">Reject</button>
+                </div>
+            </div>
+        </div>
+        <div th:if="${results.content.isEmpty()}" class="admin-card text-center text-muted">
+            <i class="bi bi-images fs-3 d-block mb-1"></i> No photos in this view.
+        </div>
+    </form>
+
+    <div class="admin-pagination" th:if="${results.totalPages > 1}">
+        <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
+        <div class="btn-group btn-group-sm">
+            <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+               th:href="@{/admin/photos(status=${status},source=${source},page=${results.number - 1})}">Previous</a>
+            <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+               th:href="@{/admin/photos(status=${status},source=${source},page=${results.number + 1})}">Next</a>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script>
+    (function () {
+        var all = document.getElementById('selectAll');
+        var boxes = Array.prototype.slice.call(document.querySelectorAll('.photo-select'));
+        function sync(box) { box.closest('.photo-card').classList.toggle('is-selected', box.checked); }
+        boxes.forEach(function (b) { b.addEventListener('change', function () { sync(b); }); });
+        if (all) {
+            all.addEventListener('change', function () {
+                boxes.forEach(function (b) { b.checked = all.checked; sync(b); });
+            });
+        }
+    })();
+</script>
+</body>
+</html>

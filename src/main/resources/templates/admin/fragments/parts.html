@@ -168,6 +168,13 @@
             </a>
         </li>
         <li>
+            <a th:href="@{/admin/photos}" th:classappend="${active == 'photos'} ? 'active'">
+                <i class="bi bi-images"></i> Photos
+                <span th:if="${pendingPhotoCount != null and pendingPhotoCount > 0}"
+                      class="badge rounded-pill text-bg-warning ms-1" th:text="${pendingPhotoCount}">3</span>
+            </a>
+        </li>
+        <li>
             <a th:href="@{/admin/reports}" th:classappend="${active == 'reports'} ? 'active'">
                 <i class="bi bi-flag"></i> Reports
             </a>
@@ -183,7 +190,12 @@
                 <i class="bi bi-clock-history"></i> Audit Log
             </a>
         </li>
-        <!-- NID verification is feature-flagged (off by default); it has no admin page while off. -->
+        <li>
+            <a th:href="@{/admin/settings}" th:classappend="${active == 'settings'} ? 'active'">
+                <i class="bi bi-toggles"></i> Settings
+            </a>
+        </li>
+        <!-- NID verification is a feature flag (System → Settings, off by default); it has no admin page of its own. -->
         </th:block>
     </ul>
 </nav>

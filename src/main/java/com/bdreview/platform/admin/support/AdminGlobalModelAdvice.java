@@ -11,9 +11,18 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 public class AdminGlobalModelAdvice {
 
     private final UserRepository userRepository;
+    private final com.bdreview.platform.photomod.PhotoModerationService photoModeration;
 
-    public AdminGlobalModelAdvice(UserRepository userRepository) {
+    public AdminGlobalModelAdvice(UserRepository userRepository,
+                                  com.bdreview.platform.photomod.PhotoModerationService photoModeration) {
         this.userRepository = userRepository;
+        this.photoModeration = photoModeration;
+    }
+
+    /** V63: badge on the sidebar's Moderation → Photos link (ADMIN only — moderators don't see that section). */
+    @ModelAttribute("pendingPhotoCount")
+    public Long pendingPhotoCount(Authentication authentication) {
+        return isAdminUser(authentication) ? photoModeration.pendingCount() : null;
     }
 
     /** ADMIN vs MODERATOR — templates use it to hide ADMIN-only navigation/actions (the server blocks them anyway). */

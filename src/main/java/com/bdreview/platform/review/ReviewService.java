@@ -130,8 +130,12 @@ public class ReviewService {
                 .build());
 
         if (request.photoUrls() != null) {
-            request.photoUrls().forEach(url ->
-                    reviewPhotoRepository.save(ReviewPhoto.builder().reviewId(review.getId()).url(url).build()));
+            // V63: held for moderation while photo approval is on — public reads only return APPROVED.
+            request.photoUrls().forEach(url -> reviewPhotoRepository.save(ReviewPhoto.builder()
+                    .reviewId(review.getId()).url(url)
+                    .moderationStatus(photoModeration.admitRow(com.bdreview.platform.photomod.PhotoSource.REVIEW,
+                            review.getId(), request.businessId(), userId, url).name())
+                    .build()));
         }
 
         // Fast path: counts immediately, never waits on the ML analysis below.
@@ -311,9 +315,19 @@ public class ReviewService {
         return reviewRepository.ratingTrend(businessId, bucket);
     }
 
+    /** Approved photos only — this feeds public review responses. */
     public List<ReviewPhoto> photosFor(UUID reviewId) {
-        return reviewPhotoRepository.findByReviewId(reviewId);
+        return reviewPhotoRepository.findByReviewId(reviewId).stream().filter(ReviewPhoto::isApproved).toList();
     }
+
+    /** V63 photo moderation — setter-injected (like SmartSearchService's sponsored hook) to keep the constructor stable. */
+    private com.bdreview.platform.photomod.PhotoModerationService photoModeration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPhotoModeration(com.bdreview.platform.photomod.PhotoModerationService photoModeration) {
+        this.photoModeration = photoModeration;
+    }
+
 
     private static final int SNIPPET_MAX_LENGTH = 120;
 

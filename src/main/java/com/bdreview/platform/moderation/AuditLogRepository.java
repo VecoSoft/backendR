@@ -9,6 +9,10 @@ import java.util.UUID;
 
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSpecificationExecutor<AuditLog> {
 
+    /** Admin user page: one account's trail across several entity types (USER, STAFF_ROLE). */
+    java.util.List<AuditLog> findByEntityTypeInAndEntityIdOrderByCreatedAtDesc(
+            java.util.Collection<String> entityTypes, UUID entityId, org.springframework.data.domain.Pageable pageable);
+
     Page<AuditLog> findByEntityTypeAndEntityIdOrderByCreatedAtDesc(
             String entityType, UUID entityId, Pageable pageable);
 

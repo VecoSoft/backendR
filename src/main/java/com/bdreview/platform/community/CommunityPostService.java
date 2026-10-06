@@ -124,6 +124,14 @@ public class CommunityPostService {
         this.policy = policy;
     }
 
+    /** V63 photo moderation — setter-injected (like SmartSearchService's sponsored hook) to keep the constructor stable. */
+    private com.bdreview.platform.photomod.PhotoModerationService photoModeration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPhotoModeration(com.bdreview.platform.photomod.PhotoModerationService photoModeration) {
+        this.photoModeration = photoModeration;
+    }
+
     /** V58 promotion hook — optional, so the community works unchanged without the promo module (and in unit tests). */
     private BusinessPostSupport businessPostSupport;
 
@@ -193,7 +201,7 @@ public class CommunityPostService {
                 .holdReason(hold)
                 .build());
 
-        savePhotos(post.getId(), photoUrls);
+        savePhotos(post.getId(), userId, photoUrls, Map.of());
 
         if (request.postType() == CommunityPostType.POLL) {
             createPoll(post.getId(), request);
@@ -226,10 +234,17 @@ public class CommunityPostService {
         return raw.stream().filter(Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).toList();
     }
 
-    private void savePhotos(UUID postId, List<String> photoUrls) {
+    /**
+     * V63: each photo is PENDING (hidden from every public read) while photo approval is on. An
+     * edit re-saving a photo the post already had keeps that photo's status ({@code previousStatus}).
+     */
+    private void savePhotos(UUID postId, UUID authorId, List<String> photoUrls, Map<String, String> previousStatus) {
         List<CommunityPostPhoto> rows = new ArrayList<>();
         for (int i = 0; i < photoUrls.size(); i++) {
-            rows.add(CommunityPostPhoto.builder().postId(postId).url(photoUrls.get(i)).position((short) i).build());
+            String url = photoUrls.get(i);
+            String status = previousStatus.containsKey(url) ? previousStatus.get(url)
+                    : photoModeration.admitRow(com.bdreview.platform.photomod.PhotoSource.POST, postId, null, authorId, url).name();
+            rows.add(CommunityPostPhoto.builder().postId(postId).url(url).position((short) i).moderationStatus(status).build());
         }
         photoRepository.saveAll(rows);
     }
@@ -497,9 +512,12 @@ public class CommunityPostService {
         }
         postRepository.save(post);
 
+        Map<String, String> previousStatus = existingPhotos.stream().filter(p -> p.getRemovedAt() == null)
+                .collect(Collectors.toMap(CommunityPostPhoto::getUrl, CommunityPostPhoto::getModerationStatus, (a, b) -> a));
         photoRepository.deleteAll(existingPhotos.stream().filter(p -> p.getRemovedAt() == null).toList());
         photoRepository.flush();
-        savePhotos(postId, photoUrls);
+        savePhotos(postId, post.getAuthorUserId(), photoUrls, previousStatus);
+        photoModeration.withdrawPending(com.bdreview.platform.photomod.PhotoSource.POST, postId, photoUrls);
 
         mentionRepository.deleteByPostId(postId);
         List<UUID> businessIds = request.businessId() == null ? List.of() : List.of(request.businessId());
@@ -1165,7 +1183,7 @@ public class CommunityPostService {
         if (rows.isEmpty() && post.getImageUrl() != null) {
             return List.of(post.getImageUrl());
         }
-        return rows.stream().filter(p -> p.getRemovedAt() == null).map(CommunityPostPhoto::getUrl).toList();
+        return rows.stream().filter(p -> p.getRemovedAt() == null && p.isApproved()).map(CommunityPostPhoto::getUrl).toList();
     }
 
     /** Batched post-id -> ordered photo URLs for a feed page — avoids one query per post. */
@@ -1186,7 +1204,7 @@ public class CommunityPostService {
     }
 
     private static List<String> sortedPhotoUrls(List<CommunityPostPhoto> photos) {
-        return photos.stream().filter(p -> p.getRemovedAt() == null)
+        return photos.stream().filter(p -> p.getRemovedAt() == null && p.isApproved())
                 .sorted(Comparator.comparing(CommunityPostPhoto::getPosition))
                 .map(CommunityPostPhoto::getUrl).toList();
     }

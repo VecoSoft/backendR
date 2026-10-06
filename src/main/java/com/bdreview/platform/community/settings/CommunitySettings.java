@@ -197,7 +197,10 @@ public class CommunitySettings {
     @NoArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Features {
-        /** null = follow the deployment default (features.nid-verification.enabled / FEATURE_NID_VERIFICATION_ENABLED). */
+        /**
+         * Legacy (V56) — no longer read. Since V63 every feature flag, NID included, lives in
+         * platform_setting (features.FeatureFlagService); kept only so old stored documents still parse.
+         */
         private Boolean nidVerificationEnabled = null;
     }
 }

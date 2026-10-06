@@ -422,7 +422,7 @@ public class PromoCreativeService {
         if (b.getCoverPhotoUrl() != null) {
             out.add(b.getCoverPhotoUrl());
         }
-        photoRepository.findByBusinessIdOrderBySortOrderAsc(b.getId()).stream().map(BusinessPhoto::getUrl).forEach(out::add);
+        photoRepository.findByBusinessIdOrderBySortOrderAsc(b.getId()).stream().filter(BusinessPhoto::isApproved).map(BusinessPhoto::getUrl).forEach(out::add);
         menuItemRepository.findByBusinessIdOrderBySortOrderAsc(b.getId()).stream()
                 .map(MenuItem::getPhotoUrl).filter(Objects::nonNull).forEach(out::add);
         offerRepository.findByBusinessIdAndStatusAndValidUntilAfterOrderByValidUntilAsc(b.getId(), OfferStatus.ACTIVE, Instant.now())

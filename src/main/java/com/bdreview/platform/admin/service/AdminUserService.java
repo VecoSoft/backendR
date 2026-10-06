@@ -29,8 +29,9 @@ public class AdminUserService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    public Page<User> search(String query, UserRole role, int page) {
-        return userRepository.search(query == null || query.isBlank() ? null : query, role, PageRequest.of(page, 20));
+    public Page<User> search(String query, UserRole role, String status, int page) {
+        return userRepository.adminSearch(query == null || query.isBlank() ? null : query, role,
+                status == null || status.isBlank() ? null : status, java.time.Instant.now(), PageRequest.of(page, 20));
     }
 
     public User get(UUID id) {
@@ -62,9 +63,7 @@ public class AdminUserService {
         User user = get(id);
         user.setName(form.getName());
         user.setPreferredLanguage(form.getPreferredLanguage());
-        if (form.getRole() != null) {
-            user.setRole(form.getRole());
-        }
+        // V63: role changes go through AccountControlService.changeRole (reason + audit + session revoke).
         return userRepository.save(user);
     }
 

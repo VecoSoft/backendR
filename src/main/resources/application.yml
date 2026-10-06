@@ -102,9 +102,30 @@ app:
 
 # --- Runtime feature flags ---
 # Deployment defaults; an ADMIN can override each one at runtime from the admin panel
-# (Community -> Settings -> Feature flags), stored in community_settings.
+# (System -> Settings), stored in platform_setting (V63). A feature that is off answers
+# 404 "Feature disabled" on its endpoints; the app hides it via GET /api/v1/community/settings.
 features:
   nid-verification:
     # NID (national ID) verification. OFF: NID endpoints/uploads answer 404 "Feature disabled",
     # stored NID files are not served, and no flow requires NID.
     enabled: ${FEATURE_NID_VERIFICATION_ENABLED:false}
+  ordering:
+    enabled: ${FEATURE_ORDERING_ENABLED:true}
+  bookings:
+    enabled: ${FEATURE_BOOKINGS_ENABLED:true}
+  community:
+    enabled: ${FEATURE_COMMUNITY_ENABLED:true}
+  promotions:
+    enabled: ${FEATURE_PROMOTIONS_ENABLED:true}
+  owner-chat:
+    enabled: ${FEATURE_OWNER_CHAT_ENABLED:true}
+  new-signups:
+    enabled: ${FEATURE_NEW_SIGNUPS_ENABLED:true}
+  maintenance-mode:
+    # Site-wide 503 for everyone but admins (login + public settings stay up).
+    enabled: ${FEATURE_MAINTENANCE_MODE_ENABLED:false}
+
+# --- Photo moderation (V63) ---
+# Default for "Require approval for new photos" (Moderation -> Photos can override it).
+photos:
+  approval-required: ${PHOTOS_APPROVAL_REQUIRED:true}

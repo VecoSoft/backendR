@@ -1,5 +1,7 @@
 package com.bdreview.platform.admin.config;
 
+import com.bdreview.platform.accountcontrol.AccountControlService;
+import com.bdreview.platform.accountcontrol.AccountRestrictedException;
 import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.auth.UserRole;
@@ -7,6 +9,7 @@ import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.PhoneNumberUtils;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -34,10 +37,13 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AccountControlService accountControl;
 
-    public AdminAuthenticationProvider(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AdminAuthenticationProvider(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                                       AccountControlService accountControl) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.accountControl = accountControl;
     }
 
     @Override
@@ -54,6 +60,7 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
 
         User admin = userRepository.findByPhoneNumberAndRole(phone, UserRole.ADMIN).orElse(null);
         if (admin != null && admin.getPasswordHash() != null && passwordEncoder.matches(rawPassword, admin.getPasswordHash())) {
+            checkRestriction(admin);
             List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
             return new UsernamePasswordAuthenticationToken(admin.getId().toString(), null, authorities);
         }
@@ -61,11 +68,21 @@ public class AdminAuthenticationProvider implements AuthenticationProvider {
         // V56: community moderators sign in with their own (consumer/business) account password.
         for (User moderator : userRepository.findAllByPhoneNumberAndStaffRole(phone, User.STAFF_MODERATOR)) {
             if (moderator.getPasswordHash() != null && passwordEncoder.matches(rawPassword, moderator.getPasswordHash())) {
+                checkRestriction(moderator);
                 List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_MODERATOR"));
                 return new UsernamePasswordAuthenticationToken(moderator.getId().toString(), null, authorities);
             }
         }
         throw new BadCredentialsException("Invalid phone number or password");
+    }
+
+    /** V63: a suspended/banned staff account can't sign in to the panel either; the login is recorded. */
+    private void checkRestriction(User user) {
+        try {
+            accountControl.checkLogin(user.getId(), "ADMIN");
+        } catch (AccountRestrictedException e) {
+            throw new LockedException(e.getMessage());
+        }
     }
 
     @Override

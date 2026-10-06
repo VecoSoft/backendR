@@ -141,7 +141,7 @@ public class ReviewController {
         userRepository.findAllById(userIds).forEach(u -> userNames.put(u.getId(), u.getName()));
 
         Map<UUID, List<String>> photosByReview = new HashMap<>();
-        reviewPhotoRepository.findByReviewIdIn(reviewIds).forEach(p ->
+        reviewPhotoRepository.findByReviewIdIn(reviewIds).stream().filter(ReviewPhoto::isApproved).forEach(p ->
                 photosByReview.computeIfAbsent(p.getReviewId(), k -> new ArrayList<>()).add(p.getUrl()));
 
         Page<RecentActivityResponse> mapped = reviews.map(r -> {

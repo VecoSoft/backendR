@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Settings - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('settings')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Settings</h1>
+            <p>Platform feature flags. A switch here overrides the deployment default and applies within a few seconds.
+                The app reads them from <span class="text-mono">GET /api/v1/community/settings</span> and hides the related UI;
+                a feature that's off answers 404 “Feature disabled” on its endpoints.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th style="width:24%;">Feature</th>
+                <th style="width:12%;">Now</th>
+                <th style="width:12%;">Default</th>
+                <th>Change (reason required)</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="f : ${flags}" th:classappend="${f.key() == 'MAINTENANCE_MODE' and f.effective()} ? 'table-warning'">
+                <td>
+                    <div class="fw-semibold" th:text="${f.feature().label()}">Ordering</div>
+                    <div class="small text-muted" th:text="${f.feature().description()}">description</div>
+                    <div class="small text-muted mt-1" th:if="${f.updatedAt() != null}">
+                        Overridden <span th:text="${@fmt.dt(f.updatedAt())}">date</span>
+                        <th:block th:if="${f.updatedBy() != null and editors[f.updatedBy()] != null}">
+                            by <span th:text="${editors[f.updatedBy()].name ?: editors[f.updatedBy()].phoneNumber}">admin</span>
+                        </th:block>
+                    </div>
+                </td>
+                <td>
+                    <span class="badge" th:classappend="${f.effective()} ? (${f.key() == 'MAINTENANCE_MODE'} ? 'text-bg-warning' : 'text-bg-success') : 'text-bg-secondary'"
+                          th:text="${f.effective()} ? 'ON' : 'OFF'">ON</span>
+                    <div class="small text-muted" th:text="${f.override() == null} ? 'default' : 'override'">default</div>
+                </td>
+                <td class="small" th:text="${f.defaultValue()} ? 'on' : 'off'">on</td>
+                <td>
+                    <form method="post" th:action="@{/admin/settings/{flag}(flag=${f.key()})}" class="row g-2">
+                        <div class="col-md-3">
+                            <select name="mode" class="form-select form-select-sm">
+                                <option value="on" th:selected="${f.override() != null and f.override()}">On</option>
+                                <option value="off" th:selected="${f.override() != null and !f.override()}">Off</option>
+                                <option value="default" th:selected="${f.override() == null}"
+                                        th:text="'Default (' + (${f.defaultValue()} ? 'on' : 'off') + ')'">Default</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required maxlength="1000"/>
+                        </div>
+                        <div class="col-md-3">
+                            <button th:if="${f.key() == 'MAINTENANCE_MODE'}" class="btn btn-sm btn-outline-warning w-100"
+                                    onclick="return confirm('Change site-wide maintenance mode?');">Apply</button>
+                            <button th:unless="${f.key() == 'MAINTENANCE_MODE'}" class="btn btn-sm btn-outline-primary w-100">Apply</button>
+                        </div>
+                        <div class="col-12" th:if="${f.key() == 'MAINTENANCE_MODE'}">
+                            <textarea name="message" rows="2" class="form-control form-control-sm" maxlength="500"
+                                      th:placeholder="${defaultMaintenanceMessage}"
+                                      th:text="${f.message()}"></textarea>
+                            <div class="form-text">Shown to every visitor while maintenance mode is on. Admins can still use the app.</div>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="small text-muted mt-3">
+        Photo approval has its own switch on <a th:href="@{/admin/photos}">Moderation → Photos</a>. Every change here is recorded in the
+        <a th:href="@{/admin/audit-log}">audit log</a>.
+    </p>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>
