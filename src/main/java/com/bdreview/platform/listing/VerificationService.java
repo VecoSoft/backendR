@@ -69,6 +69,21 @@ public class VerificationService {
                 .build());
     }
 
+    /** The owner withdraws a request that's still waiting for review. */
+    @Transactional
+    public BusinessVerificationRequest cancel(UUID ownerUserId, UUID businessId, UUID requestId) {
+        ownedLive(ownerUserId, businessId);
+        BusinessVerificationRequest r = repository.findById(requestId)
+                .filter(x -> x.getBusinessId().equals(businessId))
+                .orElseThrow(() -> new ResourceNotFoundException("Verification request not found"));
+        if (r.getStatus() != BusinessVerificationRequest.Status.PENDING) {
+            throw new BadRequestException("Only a request that's still waiting can be cancelled.");
+        }
+        r.setStatus(BusinessVerificationRequest.Status.CANCELLED);
+        r.setReviewedAt(Instant.now());
+        return repository.save(r);
+    }
+
     public List<BusinessVerificationRequest> historyForOwner(UUID ownerUserId, UUID businessId) {
         ownedLive(ownerUserId, businessId);
         return repository.findByBusinessIdOrderByCreatedAtDesc(businessId);

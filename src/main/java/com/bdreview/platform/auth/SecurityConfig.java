@@ -106,6 +106,18 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/promo/public/**").permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/promo/public/events").permitAll()
                         .anyRequest().authenticated())
+                // No (valid) bearer token → 401 with a JSON body. Without this Spring falls back to
+                // a bare 403, which the app can't tell apart from "not allowed": its refresh-and-retry
+                // only runs on 401, so every write made after the access token expired simply failed.
+                // An authenticated caller without permission still gets 403.
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.setCharacterEncoding("UTF-8");
+                    response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\","
+                            + "\"message\":\"Your session has expired — please log in again.\",\"path\":\""
+                            + request.getRequestURI().replace("\"", "") + "\"}");
+                }))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

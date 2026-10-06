@@ -281,6 +281,52 @@ class AdminPhase2IntegrationTest {
         assertThat(page).contains("Called, confirmed");
     }
 
+    /**
+     * Owner "Request verification" (live bug: the button "did nothing"). Root cause was a stale
+     * session: the API answered 403 to an expired/invalid token, which the app doesn't refresh on.
+     */
+    @Test
+    void ownerVerificationRequestEndpoint() throws Exception {
+        String url = "/api/v1/businesses/" + businessId + "/verification-requests";
+        Map<String, Object> body = Map.of("method", "PHONE", "note", "Please call after 5pm");
+
+        // No / expired / garbage token → 401 with a message (so the app refreshes the session), not 403.
+        MvcResult anon = call(HttpMethod.POST, url, null, body);
+        assertThat(anon.getResponse().getStatus()).isEqualTo(401);
+        assertThat(anon.getResponse().getContentAsString()).contains("session has expired");
+        assertThat(call(HttpMethod.POST, url, "not-a-valid.jwt.token", body).getResponse().getStatus()).isEqualTo(401);
+        // Logged in but not the owner → 403.
+        assertThat(call(HttpMethod.POST, url, memberToken, body).getResponse().getStatus()).isEqualTo(403);
+
+        MvcResult created = call(HttpMethod.POST, url, ownerToken, body);
+        assertThat(created.getResponse().getStatus()).as(created.getResponse().getContentAsString()).isEqualTo(200);
+        JsonNode view = objectMapper.readTree(created.getResponse().getContentAsString());
+        assertThat(view.get("status").asText()).isEqualTo("PENDING");
+        assertThat(view.get("method").asText()).isEqualTo("PHONE");
+        UUID requestId = UUID.fromString(view.get("id").asText());
+        assertThat(jdbc.queryForObject("SELECT status FROM business_verification_request WHERE id = ?", String.class, requestId))
+                .isEqualTo("PENDING");
+
+        JsonNode history = objectMapper.readTree(get200(url, ownerToken));
+        assertThat(history.get(0).get("id").asText()).isEqualTo(requestId.toString());
+        assertThat(mvc.perform(get("/admin/verification").with(asAdmin)).andReturn().getResponse().getContentAsString())
+                .contains(jdbc.queryForObject("SELECT name FROM business WHERE id = ?", String.class, businessId))
+                .contains("Please call after 5pm");
+
+        // One waiting request at a time.
+        MvcResult duplicate = call(HttpMethod.POST, url, ownerToken, body);
+        assertThat(duplicate.getResponse().getStatus()).isEqualTo(400);
+        assertThat(duplicate.getResponse().getContentAsString()).contains("already waiting");
+
+        // The owner can withdraw it, then ask again.
+        assertThat(call(HttpMethod.DELETE, url + "/" + requestId, memberToken, null).getResponse().getStatus()).isEqualTo(403);
+        MvcResult cancelled = call(HttpMethod.DELETE, url + "/" + requestId, ownerToken, null);
+        assertThat(cancelled.getResponse().getStatus()).isEqualTo(200);
+        assertThat(objectMapper.readTree(cancelled.getResponse().getContentAsString()).get("status").asText()).isEqualTo("CANCELLED");
+        assertThat(call(HttpMethod.DELETE, url + "/" + requestId, ownerToken, null).getResponse().getStatus()).isEqualTo(400);
+        assertThat(call(HttpMethod.POST, url, ownerToken, body).getResponse().getStatus()).isEqualTo(200);
+    }
+
     @Test
     void mergeMovesRelatedRowsAndTheOldSlugRedirects() throws Exception {
         UUID keep = businessId;

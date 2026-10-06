@@ -52,6 +52,11 @@ public class ListingOwnerController {
                 body.documentRef(), body.note()));
     }
 
+    @DeleteMapping("/verification-requests/{requestId}")
+    public VerificationView cancelVerification(@PathVariable UUID businessId, @PathVariable UUID requestId) {
+        return VerificationView.of(verificationService.cancel(CurrentUser.id(), businessId, requestId));
+    }
+
     @GetMapping("/verification-requests")
     public List<VerificationView> verificationHistory(@PathVariable UUID businessId) {
         return verificationService.historyForOwner(CurrentUser.id(), businessId).stream().map(VerificationView::of).toList();

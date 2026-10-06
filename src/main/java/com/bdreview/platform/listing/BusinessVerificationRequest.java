@@ -18,7 +18,8 @@ public class BusinessVerificationRequest {
 
     public enum Method { PHONE, DOCUMENT, MANUAL }
 
-    public enum Status { PENDING, APPROVED, REJECTED, REVOKED }
+    /** CANCELLED (V66) = the owner withdrew it before review. */
+    public enum Status { PENDING, APPROVED, REJECTED, REVOKED, CANCELLED }
 
     @Id
     @GeneratedValue
