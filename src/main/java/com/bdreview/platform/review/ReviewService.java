@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -74,6 +75,18 @@ public class ReviewService {
         this.self = self;
     }
 
+    /** V65 admin review policy — setter-injected so the existing constructor (and its unit tests) stay unchanged. */
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
+    }
+
+    private com.bdreview.platform.adminconfig.ReviewPolicyConfig policy() {
+        return adminConfig != null ? adminConfig.reviewPolicy() : new com.bdreview.platform.adminconfig.ReviewPolicyConfig();
+    }
+
     // -----------------------------------------------------------------
     // Image upload — pre-signed direct-to-storage URL, one call per photo
     // (mirrors gallery.BusinessPhotoService / community.CommunityPostService).
@@ -113,7 +126,14 @@ public class ReviewService {
         if (business.getOwnerUserId().equals(userId)) {
             throw new ForbiddenException("You can't review a business you own");
         }
-        if (reviewerOwnsCompetitor(userId, business)) {
+        var rules = policy();
+        requireMinLength(request.content(), rules);
+        if (reviewRepository.countByUserIdAndCreatedAtAfter(userId, Instant.now().minus(24, ChronoUnit.HOURS))
+                >= rules.getMaxReviewsPerUserPerDay()) {
+            throw new BadRequestException("You've reached the limit of " + rules.getMaxReviewsPerUserPerDay()
+                    + " reviews in 24 hours — please try again later.");
+        }
+        if (rules.isCompetitorRuleEnabled() && reviewerOwnsCompetitor(userId, business)) {
             throw new ForbiddenException("You can't review a business that competes with a business you own (same category and area)");
         }
 
@@ -176,6 +196,7 @@ public class ReviewService {
     @Transactional
     public Review edit(UUID userId, UUID reviewId, UpdateReviewRequest request) {
         Review review = getOwnedEditableOrThrow(userId, reviewId);
+        requireMinLength(request.content(), policy());
 
         short oldRating = review.getRating();
         review.setRating(request.rating());
@@ -358,6 +379,12 @@ public class ReviewService {
         return content.substring(0, cut > 0 ? cut : SNIPPET_MAX_LENGTH).trim() + "…";
     }
 
+    private static void requireMinLength(String content, com.bdreview.platform.adminconfig.ReviewPolicyConfig rules) {
+        if (content == null || content.trim().length() < rules.getMinLength()) {
+            throw new BadRequestException("A review needs at least " + rules.getMinLength() + " characters.");
+        }
+    }
+
     /** Business detail page CTA: null means the user hasn't reviewed this business yet. */
     public Review myReviewFor(UUID businessId, UUID userId) {
         return reviewRepository.findByBusinessIdAndUserIdAndDeletedAtIsNull(businessId, userId).orElse(null);
@@ -370,7 +397,7 @@ public class ReviewService {
             throw new ForbiddenException("You do not own this review");
         }
         if (!review.isWithinEditWindow()) {
-            throw new ForbiddenException("The 72-hour edit/delete window has passed");
+            throw new ForbiddenException("The " + ReviewPolicyHolder.editWindowHours() + "-hour edit/delete window has passed");
         }
         return review;
     }

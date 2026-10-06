@@ -88,8 +88,12 @@ public class Review {
         this.updatedAt = Instant.now();
     }
 
-    /** Fixed 72h edit/delete window (spec §4), computed from createdAt — never stored redundantly. */
+    /**
+     * Edit/delete window (spec §4: 72h; admin-configurable since V65 — see ReviewPolicyHolder),
+     * computed from createdAt — never stored redundantly.
+     */
     public boolean isWithinEditWindow() {
-        return createdAt != null && Instant.now().isBefore(createdAt.plus(72, ChronoUnit.HOURS));
+        return createdAt != null
+                && Instant.now().isBefore(createdAt.plus(ReviewPolicyHolder.editWindowHours(), ChronoUnit.HOURS));
     }
 }

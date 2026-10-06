@@ -49,6 +49,9 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     /** Trust-signal review count (community author summary, community profile page). */
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 
+    /** V65 daily limit — counts deleted reviews too, so delete-and-repost can't dodge it. */
+    long countByUserIdAndCreatedAtAfter(UUID userId, Instant since);
+
     Optional<Review> findByIdAndDeletedAtIsNull(UUID id);
 
     /** One review per user per business (Yelp-style) — used both to surface "your review" and to block duplicates. */

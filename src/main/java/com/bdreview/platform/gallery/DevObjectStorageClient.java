@@ -49,6 +49,21 @@ public class DevObjectStorageClient implements ObjectStorageClient {
     }
 
     @Override
+    public String putObject(String objectKey, byte[] content) {
+        Path target = root.resolve(objectKey).normalize();
+        if (!target.startsWith(root)) {
+            throw new BadRequestException("Invalid object key");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            Files.write(target, content);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return cdnUrlFor(objectKey);
+    }
+
+    @Override
     public byte[] getObject(String objectKey) {
         String cleaned = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
         if (cleaned.isBlank()) {

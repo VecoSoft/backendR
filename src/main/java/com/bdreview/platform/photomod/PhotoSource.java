@@ -17,7 +17,12 @@ public enum PhotoSource {
     /** community_post_photo row; source_id = post id. */
     POST("Community post", true),
     /** review_photo row; source_id = review id. */
-    REVIEW("Review", true);
+    REVIEW("Review", true),
+    /** Homepage hero image (V65); source_id = {@link #HERO_SOURCE_ID}; copied into the homepage config on approval. */
+    HERO("Homepage hero", false);
+
+    /** Fixed source id for the single homepage hero slot. */
+    public static final java.util.UUID HERO_SOURCE_ID = new java.util.UUID(0L, 1L);
 
     private final String label;
     private final boolean rowBased;

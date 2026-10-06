@@ -27,12 +27,15 @@ public class AdminReviewController {
     private final FakeReviewSignalRepository fakeReviewSignalRepository;
     private final BusinessRepository businessRepository;
     private final UserRepository userRepository;
+    private final com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
 
     public AdminReviewController(AdminReviewService adminReviewService,
                                   ModerationService moderationService,
                                   FakeReviewSignalRepository fakeReviewSignalRepository,
                                   BusinessRepository businessRepository,
-                                  UserRepository userRepository) {
+                                  UserRepository userRepository,
+                                  com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
         this.adminReviewService = adminReviewService;
         this.moderationService = moderationService;
         this.fakeReviewSignalRepository = fakeReviewSignalRepository;
@@ -40,15 +43,73 @@ public class AdminReviewController {
         this.userRepository = userRepository;
     }
 
+    /** V65: filters by suspicion score range, business, user and date; rows support bulk actions. */
     @GetMapping
     public String list(@RequestParam(required = false) VisibilityStatus status,
+                        @RequestParam(required = false) Integer minScore,
+                        @RequestParam(required = false) Integer maxScore,
+                        @RequestParam(required = false) String business,
+                        @RequestParam(required = false) String user,
+                        @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+                        @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to,
                         @RequestParam(required = false) Integer page,
                         Model model) {
-        model.addAttribute("results", adminReviewService.search(status, AdminSupport.pageOrDefault(page)));
+        var filter = new AdminReviewService.Filter(status, minScore, maxScore, business, user, from, to);
+        model.addAttribute("results", adminReviewService.filter(filter, AdminSupport.pageOrDefault(page)));
+        model.addAttribute("f", filter);
         model.addAttribute("status", status);
         model.addAttribute("statuses", VisibilityStatus.values());
         model.addAttribute("active", "reviews");
         return "admin/reviews/list";
+    }
+
+    @PostMapping("/bulk")
+    public String bulk(@RequestParam(required = false) java.util.List<UUID> ids, @RequestParam String action,
+                       @RequestParam(required = false) String reason, @RequestParam(required = false) String back,
+                       RedirectAttributes redirectAttributes) {
+        try {
+            VisibilityStatus target = "hide".equals(action) ? VisibilityStatus.HIDDEN
+                    : "not-recommended".equals(action) ? VisibilityStatus.NOT_RECOMMENDED : null;
+            if (target == null) {
+                throw new com.bdreview.platform.common.BadRequestException("Unknown action.");
+            }
+            int changed = adminReviewService.bulkSetVisibility(ids, target, reason);
+            redirectAttributes.addFlashAttribute("successMessage", changed + " review(s) set to " + target + ".");
+        } catch (RuntimeException ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
+        }
+        return back != null && back.startsWith("/admin/reviews") ? "redirect:" + back : "redirect:/admin/reviews";
+    }
+
+    /** V65 Moderation → Review settings. */
+    @GetMapping("/settings")
+    public String settings(Model model) {
+        model.addAttribute("policy", adminConfig.reviewPolicy());
+        model.addAttribute("defaults", new com.bdreview.platform.adminconfig.ReviewPolicyConfig());
+        model.addAttribute("active", "review-settings");
+        return "admin/reviews/settings";
+    }
+
+    @PostMapping("/settings")
+    public String saveSettings(@RequestParam int minLength, @RequestParam int editWindowHours,
+                               @RequestParam int maxReviewsPerUserPerDay, @RequestParam int notRecommendedThreshold,
+                               @RequestParam int hiddenThreshold,
+                               @RequestParam(defaultValue = "false") boolean competitorRuleEnabled,
+                               @RequestParam(required = false) String reason, RedirectAttributes redirectAttributes) {
+        try {
+            var policy = adminConfig.reviewPolicy();
+            policy.setMinLength(minLength);
+            policy.setEditWindowHours(editWindowHours);
+            policy.setMaxReviewsPerUserPerDay(maxReviewsPerUserPerDay);
+            policy.setNotRecommendedThreshold(notRecommendedThreshold);
+            policy.setHiddenThreshold(hiddenThreshold);
+            policy.setCompetitorRuleEnabled(competitorRuleEnabled);
+            adminConfig.saveReviewPolicy(policy, reason);
+            redirectAttributes.addFlashAttribute("successMessage", "Review settings saved — they apply to the next review.");
+        } catch (RuntimeException ex) {
+            redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
+        }
+        return "redirect:/admin/reviews/settings";
     }
 
     @GetMapping("/{id}")

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Offers - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('c-offers')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Offers</h1>
+            <p>Every offer across every business. Flags: price not below original, discount over 90%,
+                still ACTIVE past its end date, BOGO without a linked item.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/commerce/offers}" method="get" class="admin-toolbar flex-wrap">
+        <select name="status" class="form-select form-select-sm" style="max-width:190px;">
+            <option value="">All statuses</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s.name() == f.status}"></option>
+        </select>
+        <select name="type" class="form-select form-select-sm" style="max-width:210px;">
+            <option value="">All types</option>
+            <option th:each="t : ${types}" th:value="${t}" th:text="${t}" th:selected="${t.name() == f.offerType}"></option>
+        </select>
+        <input type="text" name="business" th:value="${f.business}" class="form-control form-control-sm" style="max-width:200px;" placeholder="Business name or id"/>
+        <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="flagged" name="flagged" value="true" th:checked="${f.flaggedOnly}"/>
+            <label class="form-check-label small" for="flagged">Suspicious only</label>
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+        <a th:href="@{/admin/commerce/offers}" class="btn btn-sm btn-link">Reset</a>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Offer</th><th>Business</th><th>Type</th><th>Price</th><th>Valid</th><th>Status</th><th>Flags</th><th style="width:260px;">Action (reason required)</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="o : ${results.content}">
+                <td>
+                    <span th:text="${o['title']}">Offer</span>
+                    <div class="small text-muted" th:text="${o['claim_count']} + ' claims · ' + ${o['redemption_count']} + ' redeemed'">0</div>
+                </td>
+                <td><a th:href="@{/admin/businesses/{id}(id=${o['business_id']})}" th:text="${o['business_name']}">Biz</a></td>
+                <td class="small" th:text="${o['offer_type']}">TYPE</td>
+                <td class="small">
+                    <span th:if="${o['discount_value'] != null}" th:text="${o['offer_type'] == 'PERCENTAGE_DISCOUNT' ? o['discount_value'] + '%' : '৳' + o['discount_value']} + ' off'">-</span>
+                    <div th:if="${o['original_price'] != null or o['offer_price'] != null}"
+                         th:text="'৳' + (${o['offer_price']} ?: '?') + ' (was ৳' + (${o['original_price']} ?: '?') + ')'">-</div>
+                </td>
+                <td class="small text-nowrap">
+                    <div th:text="${@fmt.dt(o['valid_from'].toInstant())}">from</div>
+                    <div th:text="'→ ' + ${@fmt.dt(o['valid_until'].toInstant())}">to</div>
+                </td>
+                <td>
+                    <span class="badge text-bg-secondary" th:text="${o['status']}">ACTIVE</span>
+                    <div th:if="${o['rejection_reason'] != null}" class="small text-muted" th:text="${o['rejection_reason']}">reason</div>
+                </td>
+                <td class="small">
+                    <span th:if="${o['flag_price']}" class="badge text-bg-danger">price ≥ original</span>
+                    <span th:if="${o['flag_discount']}" class="badge text-bg-danger">&gt;90% off</span>
+                    <span th:if="${o['flag_expired_active']}" class="badge text-bg-warning">ended but ACTIVE</span>
+                    <span th:if="${o['flag_bogo']}" class="badge text-bg-warning">BOGO, no item</span>
+                </td>
+                <td>
+                    <form method="post" th:action="@{/admin/commerce/offers/{id}/hide(id=${o['id']})}" class="d-flex gap-1"
+                          th:unless="${o['status'] == 'REJECTED'}">
+                        <input type="hidden" name="back" th:value="@{/admin/commerce/offers(status=${f.status},type=${f.offerType},business=${f.business},flagged=${f.flaggedOnly},page=${results.number})}"/>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required maxlength="1000"/>
+                        <button th:if="${o['status'] == 'ACTIVE' and !o['flag_expired_active']}" class="btn btn-sm btn-outline-secondary"
+                                th:formaction="@{/admin/commerce/offers/{id}/end(id=${o['id']})}">End</button>
+                        <button class="btn btn-sm btn-outline-danger">Hide</button>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="8" class="admin-table-empty">No offers match.</td></tr>
+            </tbody>
+        </table>
+        <div class="admin-pagination" th:if="${results.totalPages > 1}">
+            <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
+            <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+                   th:href="@{/admin/commerce/offers(status=${f.status},type=${f.offerType},business=${f.business},flagged=${f.flaggedOnly},page=${results.number - 1})}">Previous</a>
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+                   th:href="@{/admin/commerce/offers(status=${f.status},type=${f.offerType},business=${f.business},flagged=${f.flaggedOnly},page=${results.number + 1})}">Next</a>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

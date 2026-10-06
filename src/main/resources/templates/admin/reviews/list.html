@@ -12,60 +12,99 @@
     <div class="admin-page-header">
         <div>
             <h1>Reviews</h1>
-            <p>All reviews across every listing, filterable by moderation status.</p>
+            <p>All reviews across every listing — filter by status, ML suspicion score, business, author and date;
+                select rows to hide them or mark them not recommended.
+                <a th:href="@{/admin/reviews/settings}">Review settings →</a></p>
         </div>
     </div>
 
     <div th:replace="~{admin/fragments/parts :: alerts}"></div>
 
-    <form th:action="@{/admin/reviews}" method="get" class="admin-toolbar">
-        <select name="status" class="form-select form-select-sm" style="max-width:220px;">
+    <form th:action="@{/admin/reviews}" method="get" class="admin-toolbar flex-wrap">
+        <select name="status" class="form-select form-select-sm" style="max-width:190px;">
             <option value="">All statuses</option>
             <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == status}"></option>
         </select>
+        <input type="number" min="0" max="100" name="minScore" th:value="${f.minScore}" class="form-control form-control-sm" style="max-width:110px;" placeholder="Score ≥"/>
+        <input type="number" min="0" max="100" name="maxScore" th:value="${f.maxScore}" class="form-control form-control-sm" style="max-width:110px;" placeholder="Score ≤"/>
+        <input type="text" name="business" th:value="${f.business}" class="form-control form-control-sm" style="max-width:180px;" placeholder="Business name or id"/>
+        <input type="text" name="user" th:value="${f.user}" class="form-control form-control-sm" style="max-width:180px;" placeholder="Author name / phone / id"/>
+        <input type="date" name="from" th:value="${f.from}" class="form-control form-control-sm" style="max-width:150px;" title="From"/>
+        <input type="date" name="to" th:value="${f.to}" class="form-control form-control-sm" style="max-width:150px;" title="To"/>
         <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i> Filter</button>
+        <a th:href="@{/admin/reviews}" class="btn btn-sm btn-link">Reset</a>
     </form>
 
-    <div class="admin-table-wrap">
-        <table class="admin-table">
-            <thead>
-            <tr>
-                <th>Rating</th>
-                <th>Content</th>
-                <th>Status</th>
-                <th>Suspicion</th>
-                <th>Created</th>
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr th:each="r : ${results.content}">
-                <td th:text="${r.rating + '/5'}">-</td>
-                <td style="max-width:340px;" th:text="${r.content} ?: '(no text)'">-</td>
-                <td><span class="badge" th:classappend="'badge-status-' + ${r.visibilityStatus}" th:text="${r.visibilityStatus}">-</span></td>
-                <td th:text="${r.suspicionScore}">0</td>
-                <td class="text-mono" th:text="${r.createdAt}">-</td>
-                <td class="text-end">
-                    <a th:href="@{/admin/reviews/{id}(id=${r.id})}" class="btn btn-sm btn-outline-secondary">View</a>
-                </td>
-            </tr>
-            <tr th:if="${results.content.isEmpty()}">
-                <td colspan="6" class="admin-table-empty">No reviews found.</td>
-            </tr>
-            </tbody>
-        </table>
-        <div class="admin-pagination" th:if="${results.totalPages > 0}">
-            <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
-            <div class="btn-group btn-group-sm">
-                <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
-                   th:href="@{/admin/reviews(status=${status},page=${results.number - 1})}">Previous</a>
-                <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
-                   th:href="@{/admin/reviews(status=${status},page=${results.number + 1})}">Next</a>
+    <form method="post" th:action="@{/admin/reviews/bulk}">
+        <button type="submit" disabled hidden aria-hidden="true"></button>
+        <input type="hidden" name="back"
+               th:value="@{/admin/reviews(status=${status},minScore=${f.minScore},maxScore=${f.maxScore},business=${f.business},user=${f.user},from=${f.from},to=${f.to},page=${results.number})}"/>
+        <div class="admin-card d-flex flex-wrap gap-2 align-items-center" th:if="${!results.content.isEmpty()}">
+            <div class="form-check mb-0 me-2">
+                <input class="form-check-input" type="checkbox" id="selectAll"/>
+                <label class="form-check-label small" for="selectAll">Select all on page</label>
+            </div>
+            <input type="text" name="reason" class="form-control form-control-sm" style="max-width:360px;" placeholder="Reason (required)" required maxlength="1000"/>
+            <button name="action" value="not-recommended" class="btn btn-sm btn-outline-warning">Not recommended</button>
+            <button name="action" value="hide" class="btn btn-sm btn-outline-danger">Hide</button>
+        </div>
+
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead>
+                <tr>
+                    <th></th>
+                    <th>Business</th>
+                    <th>Author</th>
+                    <th>Rating</th>
+                    <th>Content</th>
+                    <th>Status</th>
+                    <th>Suspicion</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="r : ${results.content}">
+                    <td><input class="form-check-input row-select" type="checkbox" name="ids" th:value="${r['id']}" aria-label="Select review"/></td>
+                    <td class="small"><a th:href="@{/admin/businesses/{id}(id=${r['business_id']})}" th:text="${r['business_name']}">Biz</a></td>
+                    <td class="small"><a th:href="@{/admin/users/{id}(id=${r['user_id']})}" th:text="${r['user_name'] ?: r['phone_number']}">User</a></td>
+                    <td th:text="${r['rating']} + '/5'">-</td>
+                    <td class="small" style="max-width:320px;" th:text="${#strings.abbreviate(r['content'] ?: '(no text)', 160)}">-</td>
+                    <td><span class="badge" th:classappend="'badge-status-' + ${r['visibility_status']}" th:text="${r['visibility_status']}">-</span></td>
+                    <td th:text="${r['suspicion_score']}">0</td>
+                    <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                    <td class="text-end">
+                        <a th:href="@{/admin/reviews/{id}(id=${r['id']})}" class="btn btn-sm btn-outline-secondary">View</a>
+                    </td>
+                </tr>
+                <tr th:if="${results.content.isEmpty()}">
+                    <td colspan="9" class="admin-table-empty">No reviews found.</td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="admin-pagination" th:if="${results.totalPages > 0}">
+                <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
+                <div class="btn-group btn-group-sm">
+                    <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+                       th:href="@{/admin/reviews(status=${status},minScore=${f.minScore},maxScore=${f.maxScore},business=${f.business},user=${f.user},from=${f.from},to=${f.to},page=${results.number - 1})}">Previous</a>
+                    <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+                       th:href="@{/admin/reviews(status=${status},minScore=${f.minScore},maxScore=${f.maxScore},business=${f.business},user=${f.user},from=${f.from},to=${f.to},page=${results.number + 1})}">Next</a>
+                </div>
             </div>
         </div>
-    </div>
+    </form>
 </main>
 
 <th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script>
+    (function () {
+        var all = document.getElementById('selectAll');
+        if (!all) return;
+        all.addEventListener('change', function () {
+            document.querySelectorAll('.row-select').forEach(function (b) { b.checked = all.checked; });
+        });
+    })();
+</script>
 </body>
 </html>

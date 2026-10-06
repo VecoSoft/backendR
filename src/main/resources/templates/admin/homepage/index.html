@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Homepage - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+    <style>
+        .hero-preview { position: relative; border-radius: 10px; overflow: hidden; min-height: 180px; background: #1f2937 center/cover no-repeat; color: #fff; }
+        .hero-preview .shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.75), rgba(0,0,0,.15)); }
+        .hero-preview .txt { position: relative; padding: 18px; display: flex; flex-direction: column; justify-content: flex-end; min-height: 180px; }
+    </style>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('homepage')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Homepage</h1>
+            <p>Hero, featured categories and the Trending / Most loved rows. Empty fields fall back to the app's built-in homepage.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-7">
+            <!-- Hero image (separate multipart form; goes through photo moderation) -->
+            <div class="admin-form-section">
+                <h2>Hero image</h2>
+                <p class="small text-muted mb-2">New images wait in <a th:href="@{/admin/photos(source='HERO')}">Moderation → Photos</a>
+                    while photo approval is on. JPG/PNG/WebP, max 5 MB.</p>
+                <div th:if="${!pendingHero.isEmpty()}" class="alert alert-warning py-2 small">
+                    <span th:text="${pendingHero.size()}">1</span> hero image(s) waiting for approval.
+                </div>
+                <form method="post" th:action="@{/admin/homepage/hero-image}" enctype="multipart/form-data" class="row g-2">
+                    <div class="col-md-5"><input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="form-control form-control-sm" required/></div>
+                    <div class="col-md-5"><input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/></div>
+                    <div class="col-md-2"><button class="btn btn-sm btn-outline-primary w-100">Upload</button></div>
+                </form>
+            </div>
+
+            <form method="post" th:action="@{/admin/homepage}">
+                <button type="submit" disabled hidden aria-hidden="true"></button>
+                <div class="admin-form-section">
+                    <h2>Hero text</h2>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold" for="heroTitle">Title</label>
+                        <input id="heroTitle" type="text" name="heroTitle" maxlength="120" class="form-control form-control-sm"
+                               th:value="${config.heroTitle}" placeholder="Find a business you can actually trust"/>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small fw-semibold" for="heroSubtitle">Subtitle</label>
+                        <textarea id="heroSubtitle" name="heroSubtitle" rows="2" maxlength="300" class="form-control form-control-sm"
+                                  th:text="${config.heroSubtitle}"></textarea>
+                    </div>
+                    <div class="form-check" th:if="${config.heroImageUrl != null}">
+                        <input class="form-check-input" type="checkbox" id="removeHeroImage" name="removeHeroImage"/>
+                        <label class="form-check-label small" for="removeHeroImage">Remove the current hero image (back to the rotating defaults)</label>
+                    </div>
+                </div>
+
+                <div class="admin-form-section">
+                    <h2>Featured categories</h2>
+                    <p class="small text-muted mb-2">Tick the categories to feature; the number sets the order (1 first).</p>
+                    <div class="row g-1" style="max-height:260px; overflow:auto;">
+                        <div class="col-md-6" th:each="cat : ${categories}">
+                            <div class="d-flex align-items-center gap-2">
+                                <input class="form-check-input mt-0" type="checkbox" name="featured" th:value="${cat.id}"
+                                       th:id="'f_' + ${cat.id}" th:checked="${config.featuredCategoryIds.contains(cat.id)}"/>
+                                <input type="number" min="1" max="99" class="form-control form-control-sm" style="width:64px;"
+                                       th:name="'pos_' + ${cat.id}"
+                                       th:value="${config.featuredCategoryIds.contains(cat.id) ? config.featuredCategoryIds.indexOf(cat.id) + 1 : ''}"/>
+                                <label class="small" th:for="'f_' + ${cat.id}" th:text="${cat.name}">Cat</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <th:block th:each="sec : ${ {'trending', 'mostLoved'} }"
+                          th:with="s=${sec == 'trending' ? config.trending : config.mostLoved}">
+                    <div class="admin-form-section">
+                        <h2 th:text="${sec == 'trending'} ? 'Trending' : 'Most loved'">Trending</h2>
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Minimum review count</label>
+                                <input type="number" min="0" class="form-control form-control-sm" th:name="${sec} + '.minReviewCount'" th:value="${s.minReviewCount}"/>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label small fw-semibold">Never show (business ids or slugs, separated by commas or new lines)</label>
+                                <textarea rows="3" class="form-control form-control-sm text-mono" th:name="${sec} + '.excluded'"
+                                          th:text="${#strings.listJoin(s.excludedBusinessIds, ', ')}"></textarea>
+                                <div class="small text-muted" th:if="${!s.excludedBusinessIds.isEmpty()}">
+                                    Currently: <span th:each="id, st : ${s.excludedBusinessIds}"
+                                                     th:text="${(names[id] ?: id) + (st.last ? '' : ', ')}">name</span>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small fw-semibold mb-1">Pins (shown first, max 3, each until an end date)</label>
+                                <div class="row g-1 mb-1" th:each="i : ${#numbers.sequence(0, 2)}"
+                                     th:with="pin=${i < s.pins.size() ? s.pins[i] : null}">
+                                    <div class="col-md-7">
+                                        <input type="text" class="form-control form-control-sm text-mono" th:name="${sec} + '.pin' + ${i}"
+                                               th:value="${pin != null ? pin.businessId : ''}" placeholder="Business id or slug"/>
+                                        <div class="small text-muted" th:if="${pin != null}" th:text="${names[pin.businessId]}">name</div>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="date" class="form-control form-control-sm" th:name="${sec} + '.pinUntil' + ${i}"
+                                               th:value="${pin != null ? @fmt.endDay(pin.endsAt) : ''}" title="Last day pinned"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </th:block>
+
+                <div class="admin-card d-flex gap-2">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason for the change (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-primary text-nowrap">Save homepage</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-xl-5">
+            <div class="admin-form-section">
+                <h2>Preview</h2>
+                <div class="hero-preview mb-3" th:style="${preview.heroImageUrl != null} ? 'background-image:url(' + ${preview.heroImageUrl} + ')' : ''">
+                    <div class="shade"></div>
+                    <div class="txt">
+                        <div class="fw-bold fs-5" th:text="${preview.heroTitle} ?: 'Find a business you can actually trust'">Title</div>
+                        <div class="small opacity-75" th:text="${preview.heroSubtitle} ?: '(built-in subtitle)'">Subtitle</div>
+                        <div class="small opacity-50 mt-1" th:if="${preview.heroImageUrl == null}">(built-in rotating images)</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="small fw-semibold mb-1">Featured categories</div>
+                    <div th:if="${featured.isEmpty()}" class="small text-muted">None — the app shows its default category row.</div>
+                    <span th:each="c : ${featured}" class="badge text-bg-light border me-1" th:text="${c.name}">Cat</span>
+                </div>
+                <div class="mb-3">
+                    <div class="small fw-semibold mb-1">Trending this week</div>
+                    <ol class="small mb-0 ps-3">
+                        <li th:each="b : ${trending}">
+                            <span th:text="${b.name}">Biz</span>
+                            <span class="text-muted" th:text="'· ' + ${b.reviewCount} + ' reviews'">0</span>
+                        </li>
+                        <li th:if="${trending.isEmpty()}" class="text-muted list-unstyled">Nothing qualifies.</li>
+                    </ol>
+                </div>
+                <div>
+                    <div class="small fw-semibold mb-1">Most loved</div>
+                    <ol class="small mb-0 ps-3">
+                        <li th:each="b : ${mostLoved}">
+                            <span th:text="${b.name}">Biz</span>
+                            <span class="text-muted" th:text="'· ' + ${b.reviewCount} + ' reviews'">0</span>
+                        </li>
+                        <li th:if="${mostLoved.isEmpty()}" class="text-muted list-unstyled">Nothing qualifies.</li>
+                    </ol>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Pinned listings appear first; the rest follow the normal ranking.</p>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

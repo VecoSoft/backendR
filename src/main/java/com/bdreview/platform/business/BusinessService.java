@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -101,6 +102,14 @@ public class BusinessService {
         this.reviewService = reviewService;
         this.offerService = offerService;
         this.self = self;
+    }
+
+    /** V65 protected edits on verified listings — setter-injected for the same reason as below. */
+    private com.bdreview.platform.listing.ProtectedEditService protectedEdits;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setProtectedEdits(com.bdreview.platform.listing.ProtectedEditService protectedEdits) {
+        this.protectedEdits = protectedEdits;
     }
 
     /** V63 photo moderation — setter-injected (like SmartSearchService's sponsored hook) to keep the constructor stable. */
@@ -193,11 +202,19 @@ public class BusinessService {
 
         validateEstablishedYear(request.establishedYear());
 
-        business.setName(request.name());
-        business.setCategory(category);
-        business.setCity(city);
-        business.setArea(area);
-        business.setContactNumber(PhoneNumberUtils.normalize(request.contactNumber()));
+        // V65 protected edits: on a VERIFIED business a new name / phone / address / category waits
+        // for admin approval (Catalog → Pending changes); the public listing keeps the old values.
+        String normalizedPhone = PhoneNumberUtils.normalize(request.contactNumber());
+        boolean held = protectedEdits != null && protectedEdits.holdIfProtected(business, requesterUserId, request.name(),
+                normalizedPhone, category.getId(), city.getId(), area.getId(), request.latitude(), request.longitude());
+        if (!held) {
+            business.setName(request.name());
+            business.setCategory(category);
+            business.setCity(city);
+            business.setArea(area);
+            business.setContactNumber(normalizedPhone);
+            business.setLocation(point(request.latitude(), request.longitude()));
+        }
         business.setOperatingHours(request.operatingHours());
         business.setDescription(request.description());
         business.setEstablishedYear(request.establishedYear());
@@ -211,7 +228,6 @@ public class BusinessService {
         business.setEmail(blankToNull(request.email()));
         business.setFacebookUrl(blankToNull(request.facebookUrl()));
         business.setInstagramUrl(blankToNull(request.instagramUrl()));
-        business.setLocation(point(request.latitude(), request.longitude()));
         business.setPriceTier(request.priceTier());
         business.setAttributes(attributes);
         // slug is immutable by design (spec §1) — never regenerated on update.
@@ -416,6 +432,9 @@ public class BusinessService {
                                          String q, String location, String sort,
                                          int page, int size) {
         Pageable pageable = PageRequest.of(page, com.bdreview.platform.common.PageRequestDefaults.clamp(size));
+        if (adminConfig != null && ("trending".equals(sort) || "most_loved".equals(sort))) {
+            return curatedSearch(categoryId, areaId, priceTier, minRating, lat, lng, radiusMeters, q, location, sort, pageable);
+        }
         Page<Business> results = businessRepository.search(categoryId, areaId, priceTier, minRating, lat, lng,
                 radiusMeters, q, location, sort, pageable);
         // Known limitation: totalElements/totalPages below still reflect raw row counts, so a page
@@ -423,6 +442,46 @@ public class BusinessService {
         // (see listingResponses' brand collapse).
         return new org.springframework.data.domain.PageImpl<>(
                 listingResponses(results.getContent()), pageable, results.getTotalElements());
+    }
+
+    /**
+     * V65 homepage curation (System → Homepage) for the Trending / Most loved sorts: excluded
+     * listings never appear, listings below the section's minimum review count are skipped, and
+     * active pins (max 3, each with an end date) come first. The ranking itself is unchanged.
+     */
+    private Page<BusinessResponse> curatedSearch(UUID categoryId, UUID areaId, String priceTier, Double minRating,
+                                                 Double lat, Double lng, Double radiusMeters, String q, String location,
+                                                 String sort, Pageable pageable) {
+        var home = adminConfig.homepage();
+        var section = "trending".equals(sort) ? home.getTrending() : home.getMostLoved();
+        Set<UUID> excluded = new HashSet<>(section.getExcludedBusinessIds());
+        Instant now = Instant.now();
+        List<UUID> pinIds = section.getPins().stream().filter(p -> p.isActive(now))
+                .map(com.bdreview.platform.adminconfig.HomepageConfig.Pin::getBusinessId)
+                .filter(id -> !excluded.contains(id)).distinct().limit(com.bdreview.platform.adminconfig.HomepageConfig.MAX_PINS).toList();
+
+        int wanted = (pageable.getPageNumber() + 1) * pageable.getPageSize();
+        int fetch = Math.min(500, wanted * 3 + excluded.size() + pinIds.size());
+        List<Business> ranked = businessRepository.search(categoryId, areaId, priceTier, minRating, lat, lng,
+                radiusMeters, q, location, sort, PageRequest.of(0, fetch)).getContent();
+        List<UUID> ordered = new ArrayList<>(pinIds);
+        for (Business b : ranked) {
+            if (!excluded.contains(b.getId()) && !pinIds.contains(b.getId())
+                    && b.getReviewCount() >= section.getMinReviewCount()) {
+                ordered.add(b.getId());
+            }
+        }
+        int from = Math.min(ordered.size(), (int) pageable.getOffset());
+        int to = Math.min(ordered.size(), from + pageable.getPageSize());
+        return new org.springframework.data.domain.PageImpl<>(listingResponsesByIds(ordered.subList(from, to)),
+                pageable, ordered.size());
+    }
+
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
     }
 
     /**

@@ -68,6 +68,18 @@ public class OfferService {
         this.offerNotifier = offerNotifier;
     }
 
+    /** V65 admin settings — setter-injected so the existing constructor (and its unit tests) stay unchanged. */
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
+    }
+
+    private com.bdreview.platform.adminconfig.CommerceConfig commerceConfig() {
+        return adminConfig != null ? adminConfig.commerce() : new com.bdreview.platform.adminconfig.CommerceConfig();
+    }
+
     // -----------------------------------------------------------------
     // Business owner: create / update / submit / cancel
     // -----------------------------------------------------------------
@@ -136,6 +148,12 @@ public class OfferService {
         Business business = requireOwnedBusiness(userId, offer.getBusinessId());
         if (offer.getStatus() != OfferStatus.DRAFT && offer.getStatus() != OfferStatus.REJECTED) {
             throw new BadRequestException("Only a draft or rejected offer can be submitted for approval");
+        }
+        int maxActive = commerceConfig().getMaxActiveOffersPerBusiness();
+        long active = offerRepository.countLiveForBusiness(offer.getBusinessId(), Instant.now());
+        if (active >= maxActive) {
+            throw new BadRequestException("You already have " + active + " active offers — the limit is " + maxActive
+                    + ". End one before publishing another.");
         }
         offer.setStatus(OfferStatus.ACTIVE);
         offer.setRejectionReason(null);

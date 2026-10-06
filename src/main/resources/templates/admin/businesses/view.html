@@ -87,13 +87,6 @@
         <div class="col-lg-5">
             <div class="admin-form-section">
                 <h2>Actions</h2>
-                <form th:action="@{/admin/businesses/{id}/verify(id=${business.id})}" method="post" class="mb-2">
-                    <input type="hidden" name="verified" th:value="${!business.verified}"/>
-                    <button type="submit" class="btn btn-sm w-100" th:classappend="${business.verified} ? 'btn-outline-secondary' : 'btn-outline-success'">
-                        <i class="bi bi-patch-check"></i>
-                        <span th:text="${business.verified} ? 'Remove verified status' : 'Mark as verified'">Toggle</span>
-                    </button>
-                </form>
                 <form th:if="${business.flagged}" th:action="@{/admin/businesses/{id}/unflag(id=${business.id})}" method="post" class="mb-2">
                     <button type="submit" class="btn btn-sm btn-outline-danger w-100">
                         <i class="bi bi-flag"></i> Clear flag
@@ -110,6 +103,34 @@
                         <i class="bi bi-arrow-counterclockwise"></i> Restore listing
                     </button>
                 </form>
+            </div>
+
+            <!-- V65 verification: reasoned verify/revoke + who/when/method history -->
+            <div class="admin-form-section" id="verification">
+                <h2>Verification</h2>
+                <p class="small mb-2">
+                    <span th:if="${business.verified}" class="badge bg-primary">Verified</span>
+                    <span th:unless="${business.verified}" class="badge text-bg-secondary">Not verified</span>
+                </p>
+                <div th:if="${pendingChange != null}" class="alert alert-warning py-2 small">
+                    <i class="bi bi-hourglass-split"></i> The owner changed a protected field —
+                    <a th:href="@{/admin/pending-changes}">review the pending change</a>.
+                </div>
+                <form method="post" th:action="@{/admin/verification/business/{id}/{action}(id=${business.id},action=${business.verified ? 'revoke' : 'verify'})}"
+                      class="d-flex gap-2 mb-2">
+                    <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm text-nowrap" th:classappend="${business.verified} ? 'btn-outline-danger' : 'btn-outline-success'"
+                            th:text="${business.verified} ? 'Revoke' : 'Verify'">Verify</button>
+                </form>
+                <ul class="list-unstyled small mb-0">
+                    <li th:each="v : ${verificationHistory}" class="py-1 border-bottom">
+                        <span class="badge text-bg-light border" th:text="${v.method}">PHONE</span>
+                        <span class="badge text-bg-secondary" th:text="${v.status}">PENDING</span>
+                        <span class="text-muted" th:text="${@fmt.dt(v.reviewedAt ?: v.createdAt)}">date</span>
+                        <div th:if="${v.reason != null}" th:text="${v.reason}">reason</div>
+                    </li>
+                    <li th:if="${verificationHistory.isEmpty()}" class="text-muted">No verification history.</li>
+                </ul>
             </div>
 
             <div class="admin-form-section" id="photos">

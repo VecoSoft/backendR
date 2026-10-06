@@ -34,6 +34,8 @@ public class AdminBusinessController {
     private final BusinessReviewSummaryRepository businessReviewSummaryRepository;
     private final com.bdreview.platform.photomod.PhotoModerationService photoModeration;
     private final com.bdreview.platform.gallery.ObjectStorageClient objectStorageClient;
+    private final com.bdreview.platform.listing.VerificationService verificationService;
+    private final com.bdreview.platform.listing.ProtectedEditService protectedEdits;
 
     public AdminBusinessController(AdminBusinessService adminBusinessService,
                                     CategoryRepository categoryRepository,
@@ -45,7 +47,11 @@ public class AdminBusinessController {
                                     BusinessPhotoRepository businessPhotoRepository,
                                     BusinessReviewSummaryRepository businessReviewSummaryRepository,
                                     com.bdreview.platform.photomod.PhotoModerationService photoModeration,
-                                    com.bdreview.platform.gallery.ObjectStorageClient objectStorageClient) {
+                                    com.bdreview.platform.gallery.ObjectStorageClient objectStorageClient,
+                                    com.bdreview.platform.listing.VerificationService verificationService,
+                                    com.bdreview.platform.listing.ProtectedEditService protectedEdits) {
+        this.verificationService = verificationService;
+        this.protectedEdits = protectedEdits;
         this.adminBusinessService = adminBusinessService;
         this.categoryRepository = categoryRepository;
         this.cityRepository = cityRepository;
@@ -90,6 +96,9 @@ public class AdminBusinessController {
                 reviewRepository.findByBusinessIdAndDeletedAtIsNull(id, PageRequest.of(0, 10)));
         model.addAttribute("photos", photoModeration.galleryWithStatus(id));
         model.addAttribute("pendingPhotos", photoModeration.pendingForBusiness(id));
+        // V65 listing integrity: verification history + a protected edit waiting for review
+        model.addAttribute("verificationHistory", verificationService.history(id));
+        model.addAttribute("pendingChange", protectedEdits.pendingFor(id));
         model.addAttribute("summary", businessReviewSummaryRepository.findByBusinessId(id).orElse(null));
         model.addAttribute("active", "businesses");
         return "admin/businesses/view";

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Bookings - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('c-bookings')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Bookings</h1>
+            <p>Every appointment across every business. Dates filter on the booked slot.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/commerce/bookings}" method="get" class="admin-toolbar flex-wrap">
+        <select name="status" class="form-select form-select-sm" style="max-width:170px;">
+            <option value="">All statuses</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s.name() == 'NO_SHOW' ? 'NO_SHOW (no-show)' : s}"
+                    th:selected="${s.name() == f.status}"></option>
+        </select>
+        <input type="text" name="business" th:value="${f.business}" class="form-control form-control-sm" style="max-width:200px;" placeholder="Business name or id"/>
+        <input type="date" name="from" th:value="${f.from}" class="form-control form-control-sm" style="max-width:150px;" title="Slot from"/>
+        <input type="date" name="to" th:value="${f.to}" class="form-control form-control-sm" style="max-width:150px;" title="Slot to"/>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+        <a th:href="@{/admin/commerce/bookings(status='NO_SHOW')}" class="btn btn-sm btn-link">No-shows</a>
+        <a th:href="@{/admin/commerce/bookings}" class="btn btn-sm btn-link">Reset</a>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Booking</th><th>Business</th><th>Service</th><th>Customer</th><th>Slot</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="k : ${results.content}">
+                <td class="text-mono" th:text="${k['booking_number']}">#</td>
+                <td><a th:href="@{/admin/businesses/{id}(id=${k['business_id']})}" th:text="${k['business_name']}">Biz</a></td>
+                <td class="small">
+                    <span th:text="${k['service_name_snapshot']} ?: '—'">Service</span>
+                    <span class="text-muted" th:if="${k['staff_name_snapshot'] != null}" th:text="' · ' + ${k['staff_name_snapshot']}">staff</span>
+                </td>
+                <td class="small" th:text="${k['customer_name_snapshot']}">Name</td>
+                <td class="small text-nowrap" th:text="${#temporals.format(k['slot_start'].toLocalDateTime(), 'd MMM yyyy, h:mm a')}">slot</td>
+                <td><span class="badge" th:classappend="${k['status'] == 'NO_SHOW'} ? 'text-bg-danger' : 'text-bg-secondary'" th:text="${k['status']}">PENDING</span></td>
+                <td class="text-end"><a th:href="@{/admin/commerce/bookings/{id}(id=${k['id']})}" class="btn btn-sm btn-outline-secondary">View</a></td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="7" class="admin-table-empty">No bookings match.</td></tr>
+            </tbody>
+        </table>
+        <div class="admin-pagination" th:if="${results.totalPages > 1}">
+            <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
+            <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+                   th:href="@{/admin/commerce/bookings(status=${f.status},business=${f.business},from=${f.from},to=${f.to},page=${results.number - 1})}">Previous</a>
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+                   th:href="@{/admin/commerce/bookings(status=${f.status},business=${f.business},from=${f.from},to=${f.to},page=${results.number + 1})}">Next</a>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

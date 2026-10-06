@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Order - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('c-orders')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/commerce/orders}" class="small text-decoration-none">← All orders</a>
+            <h1>Order <span class="text-mono" th:text="${order.orderNumber}">#</span></h1>
+            <p class="mb-0">
+                <span class="badge text-bg-secondary" th:text="${order.status}">PENDING</span>
+                <span class="badge text-bg-light border" th:text="${order.fulfillmentType}">PICKUP</span>
+                <span class="badge text-bg-light border" th:text="${order.paymentMethod} + ' · ' + ${order.paymentStatus}">COD</span>
+                <span class="small text-muted ms-2" th:text="'Placed ' + ${@fmt.dt(order.createdAt)}">placed</span>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="admin-form-section">
+                <h2>Items</h2>
+                <table class="admin-table">
+                    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead>
+                    <tbody>
+                    <tr th:each="i : ${items}">
+                        <td>
+                            <span th:text="${i.itemNameSnapshot}">Item</span>
+                            <span th:if="${i.offerId != null}" class="badge text-bg-warning ms-1">offer</span>
+                        </td>
+                        <td th:text="${i.quantity}">1</td>
+                        <td th:text="'৳' + ${i.unitPriceSnapshot}">৳0</td>
+                        <td th:text="'৳' + ${i.totalPrice}">৳0</td>
+                    </tr>
+                    </tbody>
+                </table>
+                <dl class="row small mb-0 mt-2">
+                    <dt class="col-sm-4 text-muted">Subtotal</dt><dd class="col-sm-8" th:text="'৳' + ${order.subtotal}">-</dd>
+                    <dt class="col-sm-4 text-muted">Delivery fee</dt><dd class="col-sm-8" th:text="'৳' + ${order.deliveryFee}">-</dd>
+                    <dt class="col-sm-4 text-muted">Discount</dt><dd class="col-sm-8" th:text="'−৳' + ${order.discountAmount}">-</dd>
+                    <dt class="col-sm-4 text-muted">Total</dt><dd class="col-sm-8 fw-bold" th:text="'৳' + ${order.totalAmount}">-</dd>
+                </dl>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Applied offer</h2>
+                <div th:if="${offers.isEmpty()}" class="small text-muted">No offer applied.</div>
+                <ul class="list-unstyled small mb-0">
+                    <li th:each="o : ${offers}">
+                        <a th:href="@{/admin/commerce/offers(business=${order.businessId})}" th:text="${o.title}">Offer</a>
+                        <span class="text-muted" th:text="' · ' + ${o.offerType} + ' · ' + ${o.status}">type</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Timeline</h2>
+                <ul class="list-unstyled small mb-0">
+                    <li th:each="e : ${timeline}" class="py-1 border-bottom">
+                        <span class="text-muted" th:text="${@fmt.dt(e.createdAt)}">time</span> —
+                        <span th:text="${e.fromStatus != null ? e.fromStatus + ' → ' : ''} + ${e.toStatus}">PENDING</span>
+                        <span th:if="${e.actorUserId == null}" class="badge text-bg-light border">system</span>
+                        <div th:if="${e.note != null}" class="text-muted" th:text="${e.note}">note</div>
+                    </li>
+                    <li th:if="${timeline.isEmpty()}" class="text-muted">No events.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="admin-form-section">
+                <h2>Customer</h2>
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8" th:text="${order.customerNameSnapshot}">-</dd>
+                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${order.customerPhoneSnapshot}">-</dd>
+                    <dt class="col-sm-4 text-muted">Address</dt><dd class="col-sm-8" th:text="${order.deliveryAddress} ?: '—'">-</dd>
+                    <dt class="col-sm-4 text-muted">Note</dt><dd class="col-sm-8" th:text="${order.customerNote} ?: '—'">-</dd>
+                    <dt class="col-sm-4 text-muted">Account</dt>
+                    <dd class="col-sm-8"><a th:if="${customer != null}" th:href="@{/admin/users/{id}(id=${customer.id})}" th:text="${customer.phoneNumber}">user</a></dd>
+                </dl>
+            </div>
+            <div class="admin-form-section">
+                <h2>Business</h2>
+                <dl class="row small mb-0" th:if="${business != null}">
+                    <dt class="col-sm-4 text-muted">Name</dt>
+                    <dd class="col-sm-8"><a th:href="@{/admin/businesses/{id}(id=${business.id})}" th:text="${business.name}">Biz</a></dd>
+                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${business.contactNumber}">-</dd>
+                    <dt class="col-sm-4 text-muted">Owner</dt>
+                    <dd class="col-sm-8"><a th:if="${owner != null}" th:href="@{/admin/users/{id}(id=${owner.id})}"
+                                           th:text="${owner.name ?: owner.phoneNumber}">owner</a></dd>
+                </dl>
+            </div>
+
+            <div class="admin-form-section" th:if="${!order.status.terminal}">
+                <h2>Cancel order</h2>
+                <form method="post" th:action="@{/admin/commerce/orders/{id}/cancel(id=${order.id})}"
+                      onsubmit="return confirm('Cancel this order? The customer and the business are notified.');">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason (shown to both sides)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-danger w-100">Cancel order</button>
+                </form>
+            </div>
+            <div class="admin-form-section" th:if="${order.status.terminal and order.rejectionReason != null}">
+                <h2>Closing reason</h2>
+                <p class="small mb-0" th:text="${order.rejectionReason}">reason</p>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Dispute</h2>
+                <p th:if="${order.disputeResolvedAt != null}" class="small">
+                    Resolved <span th:text="${@fmt.dt(order.disputeResolvedAt)}">date</span>:
+                    <span th:text="${order.disputeNote}">note</span>
+                </p>
+                <form method="post" th:action="@{/admin/commerce/orders/{id}/resolve-dispute(id=${order.id})}">
+                    <textarea name="reason" rows="2" class="form-control form-control-sm mb-2" placeholder="Resolution notes (required)" required maxlength="1000"></textarea>
+                    <button class="btn btn-sm btn-outline-primary w-100"
+                            th:text="${order.disputeResolvedAt == null} ? 'Mark dispute resolved' : 'Update resolution'">Mark dispute resolved</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

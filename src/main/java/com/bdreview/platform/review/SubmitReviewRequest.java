@@ -8,7 +8,7 @@ import java.util.UUID;
 public record SubmitReviewRequest(
         @NotNull UUID businessId,
         @Min(1) @Max(5) short rating,
-        @NotBlank @Size(min = 10, max = 4000) String content,
+        @NotBlank @Size(max = 4000) String content, // minimum length: admin review policy (ReviewService)
         List<String> photoUrls
 ) {
 }

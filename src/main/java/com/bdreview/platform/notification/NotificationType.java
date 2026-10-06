@@ -31,5 +31,8 @@ public enum NotificationType {
     OFFER_REJECTED,
     // Community moderation (V56) — see community.moderation.CommunityModerationService
     COMMUNITY_MODERATION,
-    COMMUNITY_RESTRICTION
+    COMMUNITY_RESTRICTION,
+    // Admin panel Phase 2 (V65) — support/moderation decisions: order or booking cancelled by
+    // support, offer ended/hidden, verification and protected-edit outcomes
+    ADMIN_NOTICE
 }

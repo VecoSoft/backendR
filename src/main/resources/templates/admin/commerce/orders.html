@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Orders - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('c-orders')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Orders</h1>
+            <p>Every order across every business. "Stuck" = still new or accepted after the given minutes.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/commerce/orders}" method="get" class="admin-toolbar flex-wrap">
+        <select name="status" class="form-select form-select-sm" style="max-width:170px;">
+            <option value="">All statuses</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s.name() == f.status}"></option>
+        </select>
+        <input type="text" name="business" th:value="${f.business}" class="form-control form-control-sm" style="max-width:200px;" placeholder="Business name or id"/>
+        <input type="date" name="from" th:value="${f.from}" class="form-control form-control-sm" style="max-width:150px;" title="Placed from"/>
+        <input type="date" name="to" th:value="${f.to}" class="form-control form-control-sm" style="max-width:150px;" title="Placed to"/>
+        <select name="paymentMethod" class="form-select form-select-sm" style="max-width:150px;">
+            <option value="">Any payment</option>
+            <option th:each="m : ${paymentMethods}" th:value="${m}" th:text="${m}" th:selected="${m.name() == f.paymentMethod}"></option>
+        </select>
+        <input type="number" min="1" name="stuckMinutes" th:value="${f.stuckMinutes}" class="form-control form-control-sm" style="max-width:150px;" placeholder="Stuck &gt; X min"/>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+        <a th:href="@{/admin/commerce/orders}" class="btn btn-sm btn-link">Reset</a>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Order</th><th>Business</th><th>Customer</th><th>Status</th><th>Payment</th><th>Total</th><th>Placed</th><th></th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="o : ${results.content}">
+                <td class="text-mono" th:text="${o['order_number']}">#</td>
+                <td><a th:href="@{/admin/businesses/{id}(id=${o['business_id']})}" th:text="${o['business_name']}">Biz</a></td>
+                <td class="small" th:text="${o['customer_name_snapshot']}">Name</td>
+                <td>
+                    <span class="badge text-bg-secondary" th:text="${o['status']}">PENDING</span>
+                    <span th:if="${(o['status'] == 'PENDING' or o['status'] == 'ACCEPTED') and o['age_minutes'] > 30}"
+                          class="badge text-bg-warning" th:text="${o['age_minutes']} + ' min'">stuck</span>
+                    <span th:if="${o['dispute_resolved_at'] != null}" class="badge text-bg-info">dispute resolved</span>
+                </td>
+                <td class="small" th:text="${o['payment_method']} + ' · ' + ${o['payment_status']}">COD</td>
+                <td class="small" th:text="'৳' + ${o['total_amount']}">৳0</td>
+                <td class="small text-nowrap" th:text="${@fmt.dt(o['created_at'].toInstant())}">-</td>
+                <td class="text-end"><a th:href="@{/admin/commerce/orders/{id}(id=${o['id']})}" class="btn btn-sm btn-outline-secondary">View</a></td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="8" class="admin-table-empty">No orders match.</td></tr>
+            </tbody>
+        </table>
+        <div class="admin-pagination" th:if="${results.totalPages > 1}">
+            <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span> &middot; <span th:text="${results.totalElements}">0</span> total</span>
+            <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+                   th:href="@{/admin/commerce/orders(status=${f.status},business=${f.business},from=${f.from},to=${f.to},paymentMethod=${f.paymentMethod},stuckMinutes=${f.stuckMinutes},page=${results.number - 1})}">Previous</a>
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+                   th:href="@{/admin/commerce/orders(status=${f.status},business=${f.business},from=${f.from},to=${f.to},paymentMethod=${f.paymentMethod},stuckMinutes=${f.stuckMinutes},page=${results.number + 1})}">Next</a>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

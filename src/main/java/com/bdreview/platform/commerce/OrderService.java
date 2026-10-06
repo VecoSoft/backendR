@@ -68,6 +68,18 @@ public class OrderService {
         this.notifier = notifier;
     }
 
+    /** V65 admin settings — setter-injected so the existing constructor (and its unit tests) stay unchanged. */
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
+    }
+
+    private com.bdreview.platform.adminconfig.CommerceConfig commerceConfig() {
+        return adminConfig != null ? adminConfig.commerce() : new com.bdreview.platform.adminconfig.CommerceConfig();
+    }
+
     // ================================================================
     // Placement
     // ================================================================
@@ -323,17 +335,18 @@ public class OrderService {
     }
 
     /**
-     * Sweeps orders the owner never actioned — still PENDING ("New") a full day after
-     * placement — and auto-cancels them with the customer notified, instead of leaving
-     * a stale order sitting forever with no resolution on either side.
+     * Sweeps orders the owner never actioned — still PENDING ("New") longer than the admin's
+     * "order auto-cancel minutes" (Commerce settings, default 24h) — and auto-cancels them with
+     * the customer notified, instead of leaving a stale order sitting forever.
      */
     @Transactional
-    @Scheduled(fixedRate = 30, timeUnit = TimeUnit.MINUTES)
+    @Scheduled(fixedRate = 5, timeUnit = TimeUnit.MINUTES)
     public void autoExpireStalePendingOrders() {
-        Instant cutoff = Instant.now().minus(24, ChronoUnit.HOURS);
+        int minutes = commerceConfig().getOrderAutoCancelMinutes();
+        Instant cutoff = Instant.now().minus(minutes, ChronoUnit.MINUTES);
         for (BusinessOrder order : orderRepo.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff)) {
             order.setRejectionReason("Auto-cancelled — the business didn't respond in time");
-            applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within 24 hours");
+            applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within " + humanMinutes(minutes));
             releaseOfferRedemptions(order.getId());
             notifier.statusChanged(order.getCustomerUserId(), order.getId(), order.getOrderNumber(),
                     OrderStatus.CANCELLED, NotificationType.ORDER_STATUS_CHANGED);
@@ -343,6 +356,14 @@ public class OrderService {
     // ================================================================
     // Helpers
     // ================================================================
+    private static String humanMinutes(int minutes) {
+        if (minutes % 60 != 0) {
+            return minutes + " minutes";
+        }
+        int hours = minutes / 60;
+        return hours == 1 ? "1 hour" : hours + " hours";
+    }
+
     /** Cancelled/rejected orders never actually delivered their offer's discount — undo the redemptionCount bump from placement. */
     private void releaseOfferRedemptions(UUID orderId) {
         itemRepo.findByOrderId(orderId).stream()

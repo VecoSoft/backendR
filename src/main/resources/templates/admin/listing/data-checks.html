@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Data checks - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('data-checks')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Data checks</h1>
+            <p>Live listings that look broken, fake or abandoned. Select and soft-delete in bulk (they stay archived for audits).</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item" th:each="c : ${checks}">
+            <a class="nav-link" th:classappend="${c == check} ? 'active'" th:href="@{/admin/data-checks(check=${c})}">
+                <span th:text="${c.label()}">Check</span>
+                <span class="badge rounded-pill" th:classappend="${counts[c] > 0} ? 'text-bg-warning' : 'text-bg-light border'" th:text="${counts[c]}">0</span>
+            </a>
+        </li>
+    </ul>
+    <p class="small text-muted" th:text="${check.description()}">description</p>
+
+    <form method="post" th:action="@{/admin/data-checks/delete}">
+        <input type="hidden" name="check" th:value="${check}"/>
+        <div class="admin-card d-flex flex-wrap gap-2 align-items-center" th:if="${!rows.isEmpty()}">
+            <button type="submit" disabled hidden aria-hidden="true"></button>
+            <div class="form-check mb-0 me-2">
+                <input class="form-check-input" type="checkbox" id="selectAll"/>
+                <label class="form-check-label small" for="selectAll">Select all</label>
+            </div>
+            <input type="text" name="reason" class="form-control form-control-sm" style="max-width:380px;" placeholder="Reason (required)" required maxlength="1000"/>
+            <button class="btn btn-sm btn-danger" onclick="return confirm('Soft-delete the selected listings?');">Soft-delete selected</button>
+            <span class="small text-muted ms-auto" th:text="${rows.size()} + ' shown (max 200)'">0</span>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="admin-table">
+                <thead><tr><th></th><th>Business</th><th>Category</th><th>Place</th><th>Reviews</th><th>Created</th><th>Updated</th></tr></thead>
+                <tbody>
+                <tr th:each="r : ${rows}">
+                    <td><input class="form-check-input row-select" type="checkbox" name="ids" th:value="${r['id']}" aria-label="Select"/></td>
+                    <td>
+                        <a th:href="@{/admin/businesses/{id}(id=${r['id']})}" th:text="${r['name']}">Biz</a>
+                        <span th:if="${r['verified']}" class="badge text-bg-primary ms-1">verified</span>
+                    </td>
+                    <td class="small" th:text="${r['category_name']}">cat</td>
+                    <td class="small">
+                        <span th:text="${r['area_name']} + ', ' + ${r['city_name']}">area</span>
+                        <div th:if="${check.name() == 'AREA_CITY_MISMATCH'}" class="text-danger"
+                             th:text="'area is in ' + ${r['area_city_name']}">mismatch</div>
+                    </td>
+                    <td class="small" th:text="${r['review_count']}">0</td>
+                    <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                    <td class="small text-nowrap" th:text="${@fmt.dt(r['updated_at'].toInstant())}">-</td>
+                </tr>
+                <tr th:if="${rows.isEmpty()}"><td colspan="7" class="admin-table-empty">Nothing flagged by this check.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </form>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script>
+    (function () {
+        var all = document.getElementById('selectAll');
+        if (!all) return;
+        all.addEventListener('change', function () {
+            document.querySelectorAll('.row-select').forEach(function (b) { b.checked = all.checked; });
+        });
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Pending changes - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+    <style>.diff-changed { background: rgba(234, 179, 8, .15); }</style>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('pending-changes')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Pending changes</h1>
+            <p>Owners of verified businesses changed a protected field (name, phone, address or category).
+                The public page keeps the old values until you approve. Changed rows are highlighted.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/pending-changes}" method="get" class="admin-toolbar">
+        <select name="status" class="form-select form-select-sm" style="max-width:180px;">
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == status}"></option>
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+
+    <div th:if="${results.content.isEmpty()}" class="admin-card text-muted text-center">Nothing here.</div>
+
+    <div class="admin-card" th:each="c : ${results.content}" th:with="b=${businesses[c.businessId]}">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+                <a th:if="${b != null}" class="fw-semibold" th:href="@{/admin/businesses/{id}(id=${b.id})}" th:text="${b.name}">Biz</a>
+                <div class="small text-muted" th:text="'Requested ' + ${@fmt.dt(c.createdAt)}">requested</div>
+            </div>
+            <span class="badge text-bg-secondary" th:text="${c.status}">PENDING</span>
+        </div>
+        <table class="admin-table mb-2">
+            <thead><tr><th style="width:20%;">Field</th><th>Now (public)</th><th>Requested</th></tr></thead>
+            <tbody>
+            <tr th:each="field : ${fields}"
+                th:with="before=${c.beforeJson[field]}, after=${c.afterJson[field]}"
+                th:classappend="${before?.toString() != after?.toString()} ? 'diff-changed'">
+                <td class="small fw-semibold" th:text="${field}">name</td>
+                <td class="small" th:text="${labels[before?.toString()] ?: before}">before</td>
+                <td class="small" th:text="${labels[after?.toString()] ?: after}">after</td>
+            </tr>
+            </tbody>
+        </table>
+        <div th:if="${c.reason != null}" class="small text-muted mb-2" th:text="'Decision: ' + ${c.reason}">reason</div>
+        <form th:if="${c.status.name() == 'PENDING'}" method="post" th:action="@{/admin/pending-changes/{id}/approve(id=${c.id})}" class="d-flex gap-2">
+            <button type="submit" disabled hidden aria-hidden="true"></button>
+            <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required; shown to the owner on reject)" required maxlength="1000"/>
+            <button class="btn btn-sm btn-success text-nowrap">Approve &amp; apply</button>
+            <button class="btn btn-sm btn-outline-danger text-nowrap" th:formaction="@{/admin/pending-changes/{id}/reject(id=${c.id})}">Reject</button>
+        </form>
+    </div>
+
+    <div class="admin-pagination" th:if="${results.totalPages > 1}">
+        <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span></span>
+        <div class="btn-group btn-group-sm">
+            <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+               th:href="@{/admin/pending-changes(status=${status},page=${results.number - 1})}">Previous</a>
+            <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+               th:href="@{/admin/pending-changes(status=${status},page=${results.number + 1})}">Next</a>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

@@ -230,7 +230,31 @@ public class PhotoModerationService {
             case COVER -> applyField("business", "cover_photo_url", p, decision);
             case LOGO -> applyField("business", "logo_url", p, decision);
             case MENU_ITEM -> applyField("business_menu_item", "photo_url", p, decision);
+            case HERO -> applyHero(p, decision);
         }
+    }
+
+    /** V65: the homepage hero lives in the HOMEPAGE admin config document, not a table column. */
+    private void applyHero(PhotoModeration p, PhotoStatus decision) {
+        if (adminConfig == null) {
+            return;
+        }
+        var home = adminConfig.homepage();
+        if (decision == PhotoStatus.APPROVED) {
+            home.setHeroImageUrl(p.getUrl());
+        } else if (p.getUrl().equals(home.getHeroImageUrl())) {
+            home.setHeroImageUrl(null);
+        } else {
+            return;
+        }
+        adminConfig.writeHomepageSystem(home);
+    }
+
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
     }
 
     private void applyField(String table, String column, PhotoModeration p, PhotoStatus decision) {

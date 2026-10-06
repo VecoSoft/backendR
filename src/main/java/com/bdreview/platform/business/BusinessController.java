@@ -14,7 +14,11 @@ public class BusinessController {
 
     private final BusinessService businessService;
 
-    public BusinessController(BusinessService businessService) {
+    private final com.bdreview.platform.listing.DuplicateService duplicateService;
+
+    public BusinessController(BusinessService businessService,
+                              com.bdreview.platform.listing.DuplicateService duplicateService) {
+        this.duplicateService = duplicateService;
         this.businessService = businessService;
     }
 
@@ -75,9 +79,22 @@ public class BusinessController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * V65: a slug that belonged to a listing merged into another one answers 301 to the kept
+     * listing's URL (fetch follows it; the app then swaps the address bar to the new slug).
+     */
     @GetMapping("/{slug}")
     public ResponseEntity<BusinessResponse> getBySlug(@PathVariable String slug) {
-        return ResponseEntity.ok(businessService.getBySlug(slug));
+        try {
+            return ResponseEntity.ok(businessService.getBySlug(slug));
+        } catch (com.bdreview.platform.common.ResourceNotFoundException notFound) {
+            var target = duplicateService.redirectTarget(slug);
+            if (target.isEmpty()) {
+                throw notFound;
+            }
+            return ResponseEntity.status(org.springframework.http.HttpStatus.MOVED_PERMANENTLY)
+                    .location(java.net.URI.create("/api/v1/businesses/" + target.get())).build();
+        }
     }
 
     @GetMapping("/mine")

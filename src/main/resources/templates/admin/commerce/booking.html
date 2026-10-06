@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Booking - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('c-bookings')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/commerce/bookings}" class="small text-decoration-none">← All bookings</a>
+            <h1>Booking <span class="text-mono" th:text="${booking.bookingNumber}">#</span></h1>
+            <p class="mb-0">
+                <span class="badge text-bg-secondary" th:text="${booking.status}">PENDING</span>
+                <span class="small text-muted ms-2" th:text="${#temporals.format(booking.slotStart, 'd MMM yyyy, h:mm a')} + ' – ' + ${#temporals.format(booking.slotEnd, 'h:mm a')}">slot</span>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="admin-form-section">
+                <h2>Details</h2>
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Service</dt><dd class="col-sm-8" th:text="${booking.serviceNameSnapshot} ?: '—'">-</dd>
+                    <dt class="col-sm-4 text-muted">Staff</dt><dd class="col-sm-8" th:text="${booking.staffNameSnapshot} ?: 'Any'">-</dd>
+                    <dt class="col-sm-4 text-muted">Duration</dt><dd class="col-sm-8" th:text="${booking.durationMinutesSnapshot} + ' min'">-</dd>
+                    <dt class="col-sm-4 text-muted">Started</dt><dd class="col-sm-8" th:text="${booking.startedAt == null ? '—' : @fmt.dt(booking.startedAt)}">-</dd>
+                    <dt class="col-sm-4 text-muted">Customer note</dt><dd class="col-sm-8" th:text="${booking.customerNote} ?: '—'">-</dd>
+                    <dt class="col-sm-4 text-muted">Closing reason</dt><dd class="col-sm-8" th:text="${booking.rejectionReason} ?: '—'">-</dd>
+                </dl>
+            </div>
+            <div class="admin-form-section">
+                <h2>Timeline</h2>
+                <ul class="list-unstyled small mb-0">
+                    <li th:each="e : ${timeline}" class="py-1 border-bottom">
+                        <span class="text-muted" th:text="${@fmt.dt(e.createdAt)}">time</span> —
+                        <span th:text="${e.fromStatus != null ? e.fromStatus + ' → ' : ''} + ${e.toStatus}">PENDING</span>
+                        <span th:if="${e.actorUserId == null}" class="badge text-bg-light border">system</span>
+                        <div th:if="${e.note != null}" class="text-muted" th:text="${e.note}">note</div>
+                    </li>
+                    <li th:if="${timeline.isEmpty()}" class="text-muted">No events.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="admin-form-section">
+                <h2>Customer</h2>
+                <dl class="row small mb-0">
+                    <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8" th:text="${booking.customerNameSnapshot}">-</dd>
+                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${booking.customerPhoneSnapshot}">-</dd>
+                    <dt class="col-sm-4 text-muted">Account</dt>
+                    <dd class="col-sm-8"><a th:if="${customer != null}" th:href="@{/admin/users/{id}(id=${customer.id})}" th:text="${customer.phoneNumber}">user</a></dd>
+                </dl>
+            </div>
+            <div class="admin-form-section">
+                <h2>Business</h2>
+                <dl class="row small mb-0" th:if="${business != null}">
+                    <dt class="col-sm-4 text-muted">Name</dt>
+                    <dd class="col-sm-8"><a th:href="@{/admin/businesses/{id}(id=${business.id})}" th:text="${business.name}">Biz</a></dd>
+                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${business.contactNumber}">-</dd>
+                    <dt class="col-sm-4 text-muted">Owner</dt>
+                    <dd class="col-sm-8"><a th:if="${owner != null}" th:href="@{/admin/users/{id}(id=${owner.id})}" th:text="${owner.name ?: owner.phoneNumber}">owner</a></dd>
+                </dl>
+            </div>
+            <div class="admin-form-section" th:if="${booking.status.name() == 'PENDING' or booking.status.name() == 'CONFIRMED'}">
+                <h2>Actions</h2>
+                <form method="post" th:action="@{/admin/commerce/bookings/{id}/cancel(id=${booking.id})}">
+                    <button type="submit" disabled hidden aria-hidden="true"></button>
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason (required, shown to both sides)" required maxlength="1000"/>
+                    <div class="d-grid gap-1">
+                        <button class="btn btn-sm btn-danger" onclick="return confirm('Cancel this booking?');">Cancel booking</button>
+                        <th:block th:if="${booking.status.name() == 'CONFIRMED'}">
+                            <button class="btn btn-sm btn-outline-warning"
+                                    th:formaction="@{/admin/commerce/bookings/{id}/no-show(id=${booking.id})}">Mark no-show</button>
+                            <button class="btn btn-sm btn-outline-success"
+                                    th:formaction="@{/admin/commerce/bookings/{id}/complete(id=${booking.id})}">Mark completed</button>
+                        </th:block>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

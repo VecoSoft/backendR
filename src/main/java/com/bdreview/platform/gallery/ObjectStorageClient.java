@@ -13,4 +13,7 @@ public interface ObjectStorageClient {
 
     /** Reads back the raw bytes for an object key — used by admin-only proxy views that must never hand the caller a direct storage URL. */
     byte[] getObject(String objectKey);
+
+    /** Server-side upload (admin panel forms, e.g. the homepage hero image) — returns the CDN URL. */
+    String putObject(String objectKey, byte[] content);
 }

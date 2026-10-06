@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Verification - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('verification')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Verification</h1>
+            <p>Owners asking for the Verified badge. Phone requests: call the listing's number to confirm.
+                Document requests: open the document. A business's full history is on its page.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/verification}" method="get" class="admin-toolbar">
+        <select name="status" class="form-select form-select-sm" style="max-width:180px;">
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == status}"></option>
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+            <tr><th>Business</th><th>Method</th><th>Owner note</th><th>Requested</th><th>Status</th><th style="width:320px;">Decision (reason required)</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="r : ${results.content}" th:with="b=${businesses[r.businessId]}">
+                <td>
+                    <a th:if="${b != null}" th:href="@{/admin/businesses/{id}(id=${b.id})}" th:text="${b.name}">Biz</a>
+                    <div th:if="${b != null}" class="small text-muted text-mono" th:text="${b.contactNumber}">phone</div>
+                </td>
+                <td>
+                    <span class="badge text-bg-light border" th:text="${r.method}">PHONE</span>
+                    <div th:if="${r.documentRef != null}" class="small">
+                        <a th:href="@{/admin/verification/{id}/document(id=${r.id})}" target="_blank" rel="noopener">Open document</a>
+                    </div>
+                </td>
+                <td class="small" th:text="${r.note} ?: '—'">note</td>
+                <td class="small text-nowrap" th:text="${@fmt.dt(r.createdAt)}">-</td>
+                <td>
+                    <span class="badge text-bg-secondary" th:text="${r.status}">PENDING</span>
+                    <div th:if="${r.reason != null}" class="small text-muted" th:text="${r.reason}">reason</div>
+                </td>
+                <td>
+                    <form th:if="${r.status.name() == 'PENDING'}" method="post" th:action="@{/admin/verification/{id}/approve(id=${r.id})}" class="d-flex gap-1">
+                        <button type="submit" disabled hidden aria-hidden="true"></button>
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required maxlength="1000"/>
+                        <button class="btn btn-sm btn-success">Approve</button>
+                        <button class="btn btn-sm btn-outline-danger" th:formaction="@{/admin/verification/{id}/reject(id=${r.id})}">Reject</button>
+                    </form>
+                </td>
+            </tr>
+            <tr th:if="${results.content.isEmpty()}"><td colspan="6" class="admin-table-empty">Nothing here.</td></tr>
+            </tbody>
+        </table>
+        <div class="admin-pagination" th:if="${results.totalPages > 1}">
+            <span>Page <span th:text="${results.number + 1}">1</span> of <span th:text="${results.totalPages}">1</span></span>
+            <div class="btn-group btn-group-sm">
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasPrevious()} ? 'disabled'"
+                   th:href="@{/admin/verification(status=${status},page=${results.number - 1})}">Previous</a>
+                <a class="btn btn-outline-secondary" th:classappend="${!results.hasNext()} ? 'disabled'"
+                   th:href="@{/admin/verification(status=${status},page=${results.number + 1})}">Next</a>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

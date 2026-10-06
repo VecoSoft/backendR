@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Commerce - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('commerce')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Commerce</h1>
+            <p>Orders, bookings and offers across every business, and the rules the background jobs follow.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-stat-grid mb-3">
+        <a class="admin-stat-card text-decoration-none" th:href="@{/admin/commerce/orders(stuckMinutes=30)}">
+            <div class="admin-stat-label">Stuck orders (new/accepted &gt; 30 min)</div>
+            <div class="admin-stat-value" th:text="${stuckOrders}">0</div>
+        </a>
+        <a class="admin-stat-card text-decoration-none" th:href="@{/admin/commerce/offers(flagged=true)}">
+            <div class="admin-stat-label">Suspicious offers</div>
+            <div class="admin-stat-value" th:text="${flaggedOffers}">0</div>
+        </a>
+        <a class="admin-stat-card text-decoration-none" th:href="@{/admin/commerce/bookings}">
+            <div class="admin-stat-label">Bookings</div>
+            <div class="admin-stat-value"><i class="bi bi-arrow-right"></i></div>
+        </a>
+    </div>
+
+    <div class="admin-form-section" style="max-width:760px;">
+        <h2>Settings</h2>
+        <form method="post" th:action="@{/admin/commerce/settings}" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="oac">Order auto-cancel (minutes)</label>
+                <input id="oac" type="number" min="5" max="10080" name="orderAutoCancelMinutes" class="form-control form-control-sm"
+                       th:value="${config.orderAutoCancelMinutes}" required/>
+                <div class="form-text">A new order the business never answers is cancelled after this long.
+                    Default <span th:text="${defaults.orderAutoCancelMinutes}">1440</span> (24 h).</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="nsg">Booking no-show grace (minutes)</label>
+                <input id="nsg" type="number" min="0" max="1440" name="bookingNoShowGraceMinutes" class="form-control form-control-sm"
+                       th:value="${config.bookingNoShowGraceMinutes}" required/>
+                <div class="form-text">A confirmed booking is closed (completed if started, else no-show) this long after its slot ends.
+                    Default <span th:text="${defaults.bookingNoShowGraceMinutes}">60</span>.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-semibold" for="mao">Max active offers per business</label>
+                <input id="mao" type="number" min="1" max="100" name="maxActiveOffersPerBusiness" class="form-control form-control-sm"
+                       th:value="${config.maxActiveOffersPerBusiness}" required/>
+                <div class="form-text">Publishing one more is refused. Default <span th:text="${defaults.maxActiveOffersPerBusiness}">10</span>.</div>
+            </div>
+            <div class="col-md-9">
+                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason for the change (required)" required maxlength="1000"/>
+            </div>
+            <div class="col-md-3"><button class="btn btn-sm btn-primary w-100">Save settings</button></div>
+        </form>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

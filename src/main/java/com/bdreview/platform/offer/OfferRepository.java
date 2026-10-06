@@ -15,6 +15,10 @@ import java.util.UUID;
 
 public interface OfferRepository extends JpaRepository<Offer, UUID> {
 
+    /** V65: ACTIVE and not yet expired — counts toward the admin's "max active offers per business". */
+    @Query("SELECT count(o) FROM Offer o WHERE o.businessId = :businessId AND o.status = com.bdreview.platform.offer.OfferStatus.ACTIVE AND o.validUntil > :now")
+    long countLiveForBusiness(@Param("businessId") UUID businessId, @Param("now") Instant now);
+
     Page<Offer> findByBusinessIdOrderByCreatedAtDesc(UUID businessId, Pageable pageable);
 
     /** Business-profile banner / "does this business currently have an active offer" — small result set, no paging needed. */

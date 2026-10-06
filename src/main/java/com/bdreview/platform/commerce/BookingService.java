@@ -80,6 +80,18 @@ public class BookingService {
         this.self = self;
     }
 
+    /** V65 admin settings — setter-injected so the existing constructor (and its unit tests) stay unchanged. */
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
+    }
+
+    private com.bdreview.platform.adminconfig.CommerceConfig commerceConfig() {
+        return adminConfig != null ? adminConfig.commerce() : new com.bdreview.platform.adminconfig.CommerceConfig();
+    }
+
     public BookingResponse placeBooking(UUID customerUserId, UUID businessId, PlaceBookingRequest req) {
         Business business = guard.getLiveOrThrow(businessId);
         BusinessCommerceSettings settings = settingsService.requireBookingLive(businessId);
@@ -378,7 +390,8 @@ public class BookingService {
     }
 
     /**
-     * Sweeps CONFIRMED bookings whose slot ended over an hour ago (a grace window so an
+     * Sweeps CONFIRMED bookings whose slot ended more than the admin's "no-show grace minutes"
+     * ago (Commerce settings, default 60 — a grace window so an
      * owner running slightly behind can still mark one COMPLETED by hand) and auto-closes
      * them — COMPLETED if the owner had started serving it (see {@link #start}), NO_SHOW
      * otherwise. Without this, a booking the owner forgot to close sits "Confirmed"
@@ -387,7 +400,7 @@ public class BookingService {
     @Transactional
     @Scheduled(fixedRate = 15, timeUnit = TimeUnit.MINUTES)
     public void autoExpirePastBookings() {
-        LocalDateTime cutoff = LocalDateTime.now().minusHours(1);
+        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(commerceConfig().getBookingNoShowGraceMinutes());
         for (Booking booking : bookingRepo.findByStatusAndSlotEndBefore(BookingStatus.CONFIRMED, cutoff)) {
             BookingStatus target = booking.getStartedAt() != null ? BookingStatus.COMPLETED : BookingStatus.NO_SHOW;
             String note = target == BookingStatus.COMPLETED

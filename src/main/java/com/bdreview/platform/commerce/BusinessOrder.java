@@ -93,6 +93,16 @@ public class BusinessOrder {
     @Column(name = "estimated_ready_at")
     private Instant estimatedReadyAt;
 
+    /** V65: support closed a dispute on this order (Admin → Commerce → Orders → "Mark dispute resolved"). */
+    @Column(name = "dispute_resolved_at")
+    private Instant disputeResolvedAt;
+
+    @Column(name = "dispute_resolved_by")
+    private UUID disputeResolvedBy;
+
+    @Column(name = "dispute_note", columnDefinition = "text")
+    private String disputeNote;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

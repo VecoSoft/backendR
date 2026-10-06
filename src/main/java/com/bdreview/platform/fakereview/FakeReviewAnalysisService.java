@@ -45,6 +45,18 @@ public class FakeReviewAnalysisService {
         this.businessRepository = businessRepository;
     }
 
+    /** V65 admin review policy (score thresholds) — setter-injected so the existing constructor (and its unit tests) stay unchanged. */
+    private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
+        this.adminConfig = adminConfig;
+    }
+
+    private com.bdreview.platform.adminconfig.ReviewPolicyConfig policy() {
+        return adminConfig != null ? adminConfig.reviewPolicy() : new com.bdreview.platform.adminconfig.ReviewPolicyConfig();
+    }
+
     @Transactional
     public void analyzeAndApply(UUID reviewId) {
         Review review = reviewRepository.findByIdAndDeletedAtIsNull(reviewId)
@@ -76,10 +88,21 @@ public class FakeReviewAnalysisService {
                     .build());
         }
 
-        VisibilityStatus newStatus = VisibilityStatus.valueOf(response.visibilityStatus());
+        // V65: the admin's thresholds decide the outcome from the ML score (the ML service's own
+        // verdict used the fixed 31/71 bands).
+        VisibilityStatus newStatus = statusForScore(response.suspicionScore());
         reviewRepository.applyFakeReviewVerdict(reviewId, (short) response.suspicionScore(), newStatus);
 
         applyAggregateTransition(review, previousStatus, newStatus);
+    }
+
+    /** Score → visibility using Moderation → Review settings (defaults 31 / 71, same as spec §14). */
+    public VisibilityStatus statusForScore(int score) {
+        var rules = policy();
+        if (score >= rules.getHiddenThreshold()) {
+            return VisibilityStatus.HIDDEN;
+        }
+        return score >= rules.getNotRecommendedThreshold() ? VisibilityStatus.NOT_RECOMMENDED : VisibilityStatus.RECOMMENDED;
     }
 
     /** Only RECOMMENDED reviews count toward average_rating/review_count (spec §14). */

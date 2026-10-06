@@ -24,6 +24,14 @@ public class AdminFormat {
         return instant == null ? "" : INPUT.format(instant);
     }
 
+    /**
+     * Value for an {@code <input type="date">} holding an inclusive end day: an end instant stored as
+     * the start of the following day (e.g. homepage pins) shows as the last day it's still active.
+     */
+    public String endDay(Instant endsAt) {
+        return endsAt == null ? "" : DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZONE).format(endsAt.minusSeconds(1));
+    }
+
     /** "3d", "5h", "12m" — account age / time since. */
     public String age(Instant instant) {
         if (instant == null) {

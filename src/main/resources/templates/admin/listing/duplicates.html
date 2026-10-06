@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Duplicates - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('duplicates')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Duplicate listings</h1>
+            <p>Pairs whose names are similar (≥ <span th:text="${minSimilarity}">0.4</span>) and that are within
+                <span th:text="${maxDistance}">300</span> m of each other or share a phone number. Branches of the same brand are skipped.
+                <strong>Merge</strong> moves reviews, photos, offers, menu items, followers and reactions to the kept listing,
+                archives the other one and redirects its old link.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div th:if="${pairs.isEmpty()}" class="admin-card text-muted text-center">No duplicate candidates right now.</div>
+
+    <div class="admin-card" th:each="p : ${pairs}">
+        <div class="d-flex flex-wrap gap-2 small mb-2">
+            <span class="badge text-bg-light border" th:text="'name ' + ${p['name_similarity']}">sim</span>
+            <span class="badge text-bg-light border" th:text="${p['distance_m']} + ' m apart'">dist</span>
+            <span th:if="${p['same_phone']}" class="badge text-bg-warning">same phone</span>
+        </div>
+        <div class="row g-2">
+            <div class="col-md-6" th:each="side : ${ {'a','b'} }">
+                <div class="border rounded p-2 h-100">
+                    <a class="fw-semibold" th:href="@{/admin/businesses/{id}(id=${p[side + '_id']})}" th:text="${p[side + '_name']}">Biz</a>
+                    <span th:if="${p[side + '_verified']}" class="badge text-bg-primary ms-1">verified</span>
+                    <div class="small text-muted">
+                        <span th:text="${p[side + '_area']}">Area</span> ·
+                        <span class="text-mono" th:text="${p[side + '_phone']}">phone</span> ·
+                        <span th:text="${p[side + '_reviews']} + ' reviews'">0</span> ·
+                        <span th:text="'added ' + ${@fmt.dt(p[side + '_created'].toInstant())}">added</span>
+                    </div>
+                    <div class="small text-mono text-muted" th:text="'/business/' + ${p[side + '_slug']}">slug</div>
+                </div>
+            </div>
+        </div>
+        <form method="post" th:action="@{/admin/duplicates/merge}" class="row g-2 mt-1 align-items-center">
+            <button type="submit" disabled hidden aria-hidden="true"></button>
+            <input type="hidden" name="a" th:value="${p['a_id']}"/>
+            <input type="hidden" name="b" th:value="${p['b_id']}"/>
+            <div class="col-md-4">
+                <select class="form-select form-select-sm merge-choice" aria-label="Which listing to keep">
+                    <option th:value="${p['a_id']} + '|' + ${p['b_id']}" th:text="'Keep “' + ${p['a_name']} + '”'">Keep A</option>
+                    <option th:value="${p['b_id']} + '|' + ${p['a_id']}" th:text="'Keep “' + ${p['b_name']} + '”'">Keep B</option>
+                </select>
+                <input type="hidden" name="keepId" th:value="${p['a_id']}"/>
+                <input type="hidden" name="removeId" th:value="${p['b_id']}"/>
+            </div>
+            <div class="col-md-5">
+                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+            </div>
+            <div class="col-md-3 d-flex gap-1">
+                <button class="btn btn-sm btn-danger flex-fill" onclick="return confirm('Merge these listings? This archives one of them.');">Merge</button>
+                <button class="btn btn-sm btn-outline-secondary flex-fill" th:formaction="@{/admin/duplicates/dismiss}">Not duplicate</button>
+            </div>
+        </form>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script>
+    document.querySelectorAll('.merge-choice').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            var ids = sel.value.split('|');
+            var form = sel.closest('form');
+            form.querySelector('[name=keepId]').value = ids[0];
+            form.querySelector('[name=removeId]').value = ids[1];
+        });
+    });
+</script>
+</body>
+</html>

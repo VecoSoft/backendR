@@ -155,6 +155,49 @@
                 <i class="bi bi-tags"></i> Categories &amp; Areas
             </a>
         </li>
+        <!-- V65 listing integrity -->
+        <li>
+            <a th:href="@{/admin/verification}" th:classappend="${active == 'verification'} ? 'active'">
+                <i class="bi bi-patch-check-fill"></i> Verification
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/pending-changes}" th:classappend="${active == 'pending-changes'} ? 'active'">
+                <i class="bi bi-hourglass-split"></i> Pending changes
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/duplicates}" th:classappend="${active == 'duplicates'} ? 'active'">
+                <i class="bi bi-files"></i> Duplicates
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/data-checks}" th:classappend="${active == 'data-checks'} ? 'active'">
+                <i class="bi bi-clipboard-check"></i> Data checks
+            </a>
+        </li>
+        <!-- V65 commerce oversight -->
+        <li class="admin-nav-section">Commerce</li>
+        <li>
+            <a th:href="@{/admin/commerce}" th:classappend="${active == 'commerce'} ? 'active'">
+                <i class="bi bi-sliders2"></i> Overview &amp; settings
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/commerce/orders}" th:classappend="${active == 'c-orders'} ? 'active'">
+                <i class="bi bi-bag"></i> Orders
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/commerce/bookings}" th:classappend="${active == 'c-bookings'} ? 'active'">
+                <i class="bi bi-calendar-check"></i> Bookings
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/commerce/offers}" th:classappend="${active == 'c-offers'} ? 'active'">
+                <i class="bi bi-tag"></i> Offers
+            </a>
+        </li>
         <li class="admin-nav-section">People</li>
         <li>
             <a th:href="@{/admin/users}" th:classappend="${active == 'users'} ? 'active'">
@@ -165,6 +208,11 @@
         <li>
             <a th:href="@{/admin/reviews}" th:classappend="${active == 'reviews'} ? 'active'">
                 <i class="bi bi-star"></i> Reviews
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/reviews/settings}" th:classappend="${active == 'review-settings'} ? 'active'">
+                <i class="bi bi-sliders"></i> Review settings
             </a>
         </li>
         <li>
@@ -193,6 +241,11 @@
         <li>
             <a th:href="@{/admin/settings}" th:classappend="${active == 'settings'} ? 'active'">
                 <i class="bi bi-toggles"></i> Settings
+            </a>
+        </li>
+        <li>
+            <a th:href="@{/admin/homepage}" th:classappend="${active == 'homepage'} ? 'active'">
+                <i class="bi bi-house"></i> Homepage
             </a>
         </li>
         <!-- NID verification is a feature flag (System → Settings, off by default); it has no admin page of its own. -->
