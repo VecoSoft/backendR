@@ -1,7 +1,11 @@
-target/
-uploads/
-.git/
-.idea/
+target
+uploads
+.git
+.idea
+.vscode
+.claude
 *.iml
 *.log
-.vscode/
+deploy
+Dockerfile
+.dockerignore

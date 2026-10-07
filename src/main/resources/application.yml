@@ -63,10 +63,22 @@ app:
     max-size-mb: 5
     allowed-types: image/jpeg,image/png,image/webp
   storage:
-    # Local-disk object storage stand-in for the dev/test profile (spec §13).
-    # Swap ObjectStorageClient for a real S3/R2 implementation in prod.
+    # Object storage (spec §13). "local" keeps files on disk under local-dir; "s3" keeps them
+    # in a private S3-compatible bucket (DigitalOcean Spaces). Either way, upload and file URLs
+    # point at this API (base-url + /api/v1/storage/...), which applies the access rules.
+    driver: ${STORAGE_DRIVER:local}
     local-dir: ${STORAGE_LOCAL_DIR:./uploads}
+    # Public URL of this API, used to build upload/file URLs.
     base-url: ${STORAGE_BASE_URL:http://localhost:${server.port}}
+    s3:
+      # Spaces: https://<region>.digitaloceanspaces.com, region e.g. sgp1.
+      endpoint: ${SPACES_ENDPOINT:https://sgp1.digitaloceanspaces.com}
+      region: ${SPACES_REGION:sgp1}
+      bucket: ${SPACES_BUCKET:}
+      access-key: ${SPACES_KEY:}
+      secret-key: ${SPACES_SECRET:}
+      # Optional folder inside the bucket, e.g. "prod", so several environments can share one bucket.
+      key-prefix: ${SPACES_KEY_PREFIX:}
   pagination:
     default-page-size: 20
     max-page-size: 30

@@ -1,0 +1,138 @@
+# Production stack for one droplet: Caddy (HTTPS) -> Next.js frontend + Spring Boot API,
+# plus the ML service, PostGIS and Redis on a private network. Only Caddy publishes ports.
+#
+# The three repos are cloned side by side and images are built on the droplet:
+#   /opt/jachai/backendR   (this repo; run compose from backendR/deploy)
+#   /opt/jachai/Jachai     (frontend)
+#   /opt/jachai/rpML       (ml-service)
+#
+#   cp .env.example .env   # then fill it in
+#   docker compose -f docker-compose.prod.yml build   # one service at a time if RAM is tight
+#   docker compose -f docker-compose.prod.yml up -d
+
+name: jachai
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+  frontend:
+    build:
+      context: ${FRONTEND_DIR:-../../Jachai}
+      args:
+        # Inlined into the browser bundle at build time: rebuild the frontend after changing it.
+        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
+    image: jachai/frontend:latest
+    restart: unless-stopped
+    mem_limit: 512m
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ..
+    image: jachai/backend:latest
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      PORT: 8085
+      # Trust X-Forwarded-* from Caddy so redirects (admin login) and URLs stay https.
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-bd_review}
+      DB_USER: ${POSTGRES_USER:-jachai}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      DB_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN},https://www.${DOMAIN}
+      ML_SERVICE_BASE_URL: http://ml:8081
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-true}
+      ADMIN_DEFAULT_PHONE: ${ADMIN_DEFAULT_PHONE:?set ADMIN_DEFAULT_PHONE in .env}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?set ADMIN_DEFAULT_PASSWORD in .env}
+      # Storage: files live in a private Spaces bucket and are served through the API.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      STORAGE_BASE_URL: https://${API_DOMAIN}
+      STORAGE_LOCAL_DIR: /app/uploads
+      SPACES_ENDPOINT: ${SPACES_ENDPOINT:-https://sgp1.digitaloceanspaces.com}
+      SPACES_REGION: ${SPACES_REGION:-sgp1}
+      SPACES_BUCKET: ${SPACES_BUCKET:-}
+      SPACES_KEY: ${SPACES_KEY:-}
+      SPACES_SECRET: ${SPACES_SECRET:-}
+      SPACES_KEY_PREFIX: ${SPACES_KEY_PREFIX:-}
+    volumes:
+      # Only used when STORAGE_DRIVER=local.
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ml:
+        condition: service_started
+
+  ml:
+    build:
+      context: ${ML_DIR:-../../rpML}
+    image: jachai/ml:latest
+    restart: unless-stopped
+    mem_limit: 1536m
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+    volumes:
+      - hf_models:/models
+
+  postgres:
+    # Migrations need PostGIS (plus pg_trgm, fuzzystrmatch, btree_gist from contrib).
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bd_review}
+      POSTGRES_USER: ${POSTGRES_USER:-jachai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  uploads:
+  hf_models:

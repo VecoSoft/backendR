@@ -20,6 +20,7 @@
     <properties>
         <java.version>21</java.version>
         <hibernate-spatial.version>6.6.5.Final</hibernate-spatial.version>
+        <awssdk.version>2.31.78</awssdk.version>
     </properties>
 
     <dependencies>
@@ -84,6 +85,29 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- S3-compatible object storage (DigitalOcean Spaces), used when app.storage.driver=s3 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${awssdk.version}</version>
+            <exclusions>
+                <!-- Sync calls only, over url-connection-client below: skip the Netty async stack and the Apache client. -->
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>netty-nio-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>apache-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>url-connection-client</artifactId>
+            <version>${awssdk.version}</version>
         </dependency>
 
         <!-- JWT signing/parsing (access + refresh tokens, spec §5) -->

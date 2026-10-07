@@ -3,7 +3,7 @@ package com.bdreview.platform.gallery;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -14,13 +14,12 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 /**
- * Local-disk object storage for the dev/test profile (spec §13). Bytes are
- * written to and served from {@code app.storage.local-dir} via
- * {@link StorageController} — a real deployment should implement
- * {@link ObjectStorageClient} against S3/R2 instead.
+ * Local-disk object storage (spec §13), the default ({@code app.storage.driver=local}).
+ * Bytes are written to and read from {@code app.storage.local-dir} and served via
+ * {@link StorageController}. Deployments use {@link S3ObjectStorageClient} instead.
  */
 @Component
-@Profile("!prod")
+@ConditionalOnProperty(name = "app.storage.driver", havingValue = "local", matchIfMissing = true)
 public class DevObjectStorageClient implements ObjectStorageClient {
 
     private final String baseUrl;

@@ -6,10 +6,6 @@ import com.bdreview.platform.common.FeatureDisabledException;
 import com.bdreview.platform.common.ResourceNotFoundException;
 import com.bdreview.platform.photomod.PhotoModerationService;
 import com.bdreview.platform.features.FeatureFlagService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Profile;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,26 +13,27 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLConnection;
-import java.nio.file.Files;
-import java.nio.file.Path;
 
 /**
- * Backs {@link DevObjectStorageClient}: accepts the raw PUT a client sends to
- * a "pre-signed" upload URL and writes it to local disk, then serves it back
- * over GET. Local-dev/test stand-in for a real S3/R2 bucket — see spec §13.
+ * The upload/download endpoint behind every storage URL the API hands out: accepts the raw PUT a
+ * client sends to an upload URL and serves files back over GET, applying the access rules below.
+ * Bytes go through {@link ObjectStorageClient}: local disk ({@link DevObjectStorageClient}) or a
+ * private S3/Spaces bucket ({@link S3ObjectStorageClient}). See spec §13.
  */
 @RestController
 @RequestMapping("/api/v1/storage")
-@Profile("!prod")
 public class StorageController {
 
-    private final Path root;
+    /** Hard cap on one upload. Per-type limits (e.g. app.photo.max-size-mb) are enforced where the upload is requested. */
+    private static final int MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+    private final ObjectStorageClient storage;
     private final FeatureFlagService featureFlags;
     private final PhotoModerationService photoModeration;
 
-    public StorageController(@Value("${app.storage.local-dir}") String localDir, FeatureFlagService featureFlags,
+    public StorageController(ObjectStorageClient storage, FeatureFlagService featureFlags,
                              PhotoModerationService photoModeration) {
-        this.root = Path.of(localDir).toAbsolutePath().normalize();
+        this.storage = storage;
         this.featureFlags = featureFlags;
         this.photoModeration = photoModeration;
     }
@@ -48,16 +45,19 @@ public class StorageController {
         if (isNidKey(key) && !featureFlags.nidVerificationEnabled()) {
             throw new FeatureDisabledException();
         }
-        Path target = resolve(key);
-        Files.createDirectories(target.getParent());
+        byte[] content;
         try (InputStream in = request.getInputStream()) {
-            Files.copy(in, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            content = in.readNBytes(MAX_UPLOAD_BYTES + 1);
         }
+        if (content.length > MAX_UPLOAD_BYTES) {
+            throw new BadRequestException("File is too large");
+        }
+        storage.putObject(cleaned(key), content);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/files/{*key}")
-    public ResponseEntity<Resource> get(@PathVariable String key) throws IOException {
+    public ResponseEntity<byte[]> get(@PathVariable String key) {
         // Reads under nid/ are ADMIN-only at the security layer; while the feature is off they 404 for everyone.
         if (isNidKey(key) && !featureFlags.nidVerificationEnabled()) {
             throw new FeatureDisabledException();
@@ -68,31 +68,24 @@ public class StorageController {
         if (!photoModeration.canServe(key, CurrentUser.idOrNull(), CurrentUser.hasRole("ADMIN"))) {
             throw new ResourceNotFoundException("File not found");
         }
-        Path file = resolve(key);
-        if (!Files.isRegularFile(file)) {
-            throw new ResourceNotFoundException("File not found");
-        }
-        String contentType = URLConnection.guessContentTypeFromName(file.getFileName().toString());
+        String cleaned = cleaned(key);
+        byte[] bytes = storage.getObject(cleaned);
+        String contentType = URLConnection.guessContentTypeFromName(cleaned);
         return ResponseEntity.ok()
                 .contentType(contentType != null ? MediaType.parseMediaType(contentType) : MediaType.APPLICATION_OCTET_STREAM)
-                .body(new FileSystemResource(file));
+                .body(bytes);
     }
 
     /** Stored NID images live under "nid/" (from the pre-V13 NID flow — kept, never deleted). */
     private static boolean isNidKey(String key) {
-        String cleaned = key.startsWith("/") ? key.substring(1) : key;
-        return cleaned.toLowerCase(java.util.Locale.ROOT).startsWith("nid/");
+        return cleaned(key).toLowerCase(java.util.Locale.ROOT).startsWith("nid/");
     }
 
-    private Path resolve(String key) {
+    private static String cleaned(String key) {
         String cleaned = key.startsWith("/") ? key.substring(1) : key;
         if (cleaned.isBlank()) {
             throw new BadRequestException("Missing object key");
         }
-        Path resolved = root.resolve(cleaned).normalize();
-        if (!resolved.startsWith(root)) {
-            throw new BadRequestException("Invalid object key");
-        }
-        return resolved;
+        return cleaned;
     }
 }
