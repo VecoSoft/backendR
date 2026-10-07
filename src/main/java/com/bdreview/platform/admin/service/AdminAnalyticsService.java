@@ -98,25 +98,44 @@ public class AdminAnalyticsService {
         return totals;
     }
 
+    // Search analytics read the raw search_log plus search_log_daily, where the retention job (V69)
+    // rolls raw rows up before deleting them, so the two never overlap.
+
     public List<Map<String, Object>> topQueries(int days, int limit) {
         return jdbc.queryForList("""
-                SELECT normalized AS query, count(*) AS searches, round(avg(result_count)) AS avg_results,
-                       sum(CASE WHEN result_count = 0 THEN 1 ELSE 0 END) AS zero_result_searches
-                FROM search_log WHERE created_at > now() - make_interval(days => ?)
-                GROUP BY normalized ORDER BY searches DESC, query LIMIT ?
-                """, days, limit);
+                SELECT query, sum(searches)::bigint AS searches, round(sum(result_sum)::numeric / sum(searches)) AS avg_results,
+                       sum(zero)::bigint AS zero_result_searches
+                FROM (
+                    SELECT normalized AS query, count(*) AS searches, sum(result_count) AS result_sum,
+                           count(*) FILTER (WHERE result_count = 0) AS zero
+                    FROM search_log WHERE created_at > now() - make_interval(days => ?)
+                    GROUP BY normalized
+                    UNION ALL
+                    SELECT normalized, searches, result_count_sum, zero_result_searches
+                    FROM search_log_daily WHERE day >= (now() AT TIME ZONE '%s')::date - ?
+                ) s
+                GROUP BY query ORDER BY searches DESC, query LIMIT ?
+                """.formatted(TZ), days, days, limit);
     }
 
     /** Queries that found nothing, grouped by query and area — the listings worth adding. */
     public List<Map<String, Object>> zeroResultQueries(int days, int limit) {
         return jdbc.queryForList("""
-                SELECT s.normalized AS query, coalesce(a.name, s.area_label, '(any area)') AS area, count(*) AS searches,
-                       max(s.created_at) AS last_searched
-                FROM search_log s LEFT JOIN area a ON a.id = s.area_id
-                WHERE s.result_count = 0 AND s.created_at > now() - make_interval(days => ?)
-                GROUP BY s.normalized, coalesce(a.name, s.area_label, '(any area)')
+                SELECT query, area, sum(searches)::bigint AS searches, max(last_searched) AS last_searched
+                FROM (
+                    SELECT s.normalized AS query, coalesce(a.name, s.area_label, '(any area)') AS area, count(*) AS searches,
+                           max(s.created_at) AS last_searched
+                    FROM search_log s LEFT JOIN area a ON a.id = s.area_id
+                    WHERE s.result_count = 0 AND s.created_at > now() - make_interval(days => ?)
+                    GROUP BY 1, 2
+                    UNION ALL
+                    SELECT normalized, area, zero_result_searches, last_zero_result_at
+                    FROM search_log_daily
+                    WHERE zero_result_searches > 0 AND day >= (now() AT TIME ZONE '%s')::date - ?
+                ) s
+                GROUP BY query, area
                 ORDER BY searches DESC, last_searched DESC LIMIT ?
-                """, days, limit);
+                """.formatted(TZ), days, days, limit);
     }
 
     /** Reports filed per day by reason (one row per day, a column per reason). */

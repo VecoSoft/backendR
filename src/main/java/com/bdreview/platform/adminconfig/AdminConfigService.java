@@ -24,6 +24,7 @@ public class AdminConfigService {
     public static final String COMMERCE = "COMMERCE";
     public static final String REVIEW_POLICY = "REVIEW_POLICY";
     public static final String HOMEPAGE = "HOMEPAGE";
+    public static final String RETENTION = "RETENTION";
 
     private static final long TTL_MS = 5_000;
 
@@ -51,6 +52,16 @@ public class AdminConfigService {
 
     public HomepageConfig homepage() {
         return load(HOMEPAGE, HomepageConfig.class);
+    }
+
+    public RetentionConfig retention() {
+        return load(RETENTION, RetentionConfig.class);
+    }
+
+    /** Range checks live next to the defaults and the protected floor, in DataRetentionSettings. */
+    @Transactional
+    public void saveRetention(RetentionConfig config, String reason) {
+        save(RETENTION, retention(), config, reason);
     }
 
     @Transactional

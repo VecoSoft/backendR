@@ -9,6 +9,7 @@ import com.bdreview.platform.notification.BroadcastService;
 import com.bdreview.platform.otp.LoggingSmsGatewayService;
 import com.bdreview.platform.otp.SmsGatewayService;
 import com.bdreview.platform.promo.PromoExpiryJob;
+import com.bdreview.platform.retention.DataRetentionJob;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -60,7 +61,8 @@ public class HealthService {
                          JobRunRecorder jobRuns, AuditLogService auditLogService,
                          ObjectProvider<OrderService> orders, ObjectProvider<BookingService> bookings,
                          ObjectProvider<CommunityRestrictionExpiryJob> restrictions, ObjectProvider<PromoExpiryJob> promo,
-                         ObjectProvider<BroadcastService> broadcasts) {
+                         ObjectProvider<BroadcastService> broadcasts, ObjectProvider<DataRetentionJob> retention,
+                         @Value("${retention.cron}") String retentionCron) {
         this.jdbc = jdbc;
         this.redis = redis;
         this.mlClient = mlServiceWebClient;
@@ -78,7 +80,10 @@ public class HealthService {
                 new Job("promo-expiry", "Expire business posts and boosts", "every 2 min", Duration.ofMinutes(2), true,
                         () -> promo.getObject().run()),
                 new Job("broadcast-dispatch", "Send scheduled broadcasts", "every 1 min", Duration.ofMinutes(1), true,
-                        () -> broadcasts.getObject().dispatchDue()));
+                        () -> broadcasts.getObject().dispatchDue()),
+                new Job(DataRetentionJob.JOB_NAME, "Data retention (delete old logs and deleted content)",
+                        "cron " + retentionCron + " (Dhaka)", Duration.ofDays(1), true,
+                        () -> retention.getObject().run()));
     }
 
     // ---------------------------------------------------------------- status cards
@@ -149,6 +154,25 @@ public class HealthService {
         } catch (IOException | RuntimeException e) {
             return new Check("File storage", "DOWN", ms(t0), rootMessage(e), Instant.now());
         }
+    }
+
+    // ---------------------------------------------------------------- table sizes
+
+    /** A table's on-disk size: {@code total} includes its indexes and TOAST data. */
+    public record TableSize(String name, String total, String table, String indexes, long estimatedRows) {
+    }
+
+    /** The 10 largest tables by pg_total_relation_size. Row counts are planner estimates (no full scans). */
+    public List<TableSize> largestTables() {
+        return jdbc.query("""
+                SELECT c.relname AS name, pg_total_relation_size(c.oid) AS total, pg_relation_size(c.oid) AS heap,
+                       pg_indexes_size(c.oid) AS indexes, greatest(c.reltuples, 0)::bigint AS est_rows
+                FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE c.relkind IN ('r', 'p') AND n.nspname = current_schema()
+                ORDER BY pg_total_relation_size(c.oid) DESC
+                LIMIT 10
+                """, (rs, i) -> new TableSize(rs.getString("name"), human(rs.getLong("total")), human(rs.getLong("heap")),
+                human(rs.getLong("indexes")), rs.getLong("est_rows")));
     }
 
     // ---------------------------------------------------------------- jobs

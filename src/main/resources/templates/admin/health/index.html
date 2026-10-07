@@ -36,6 +36,23 @@
     </div>
 
     <div class="admin-form-section">
+        <h2>Largest tables <span class="small text-muted fw-normal">(top 10 by total size, including indexes; rows are estimates)</span></h2>
+        <table class="admin-table">
+            <thead><tr><th>Table</th><th>Total</th><th>Data</th><th>Indexes</th><th>Rows (est.)</th></tr></thead>
+            <tbody>
+            <tr th:each="t : ${tables}">
+                <td class="text-mono small" th:text="${t.name}">notification</td>
+                <td class="small fw-semibold" th:text="${t.total}">1.0 MB</td>
+                <td class="small" th:text="${t.table}">-</td>
+                <td class="small" th:text="${t.indexes}">-</td>
+                <td class="small" th:text="${#numbers.formatInteger(t.estimatedRows, 1, 'COMMA')}">0</td>
+            </tr>
+            <tr th:if="${tables.isEmpty()}"><td colspan="5" class="admin-table-empty">No tables found.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="admin-form-section">
         <h2>Scheduled jobs</h2>
         <table class="admin-table">
             <thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Duration</th><th>Result</th><th>Next run</th><th style="width:300px;">Run now (reason)</th></tr></thead>
@@ -84,6 +101,38 @@
             <tr th:if="${runs.isEmpty()}"><td colspan="5" class="admin-table-empty">No runs recorded yet.</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <div class="admin-form-section" id="retention">
+        <h2>Data retention</h2>
+        <p class="small text-muted">
+            The <span class="text-mono">data-retention</span> job deletes rows older than these periods, in batches, once a day.
+            Leave a field blank to use the deployment default. Old search-log days are kept as daily counts for Analytics.
+            Moderation and financial audit entries are kept at least
+            <span th:text="${protectedAuditDays}">730</span> days,
+            whatever the audit-log period says. Deleted posts that had a paid boost are never removed.
+        </p>
+        <form method="post" th:action="@{/admin/health/retention}">
+            <table class="admin-table">
+                <thead><tr><th>Data</th><th>In effect</th><th>Default</th><th style="width:180px;">Override (days)</th></tr></thead>
+                <tbody>
+                <tr th:each="p : ${retentionPeriods}">
+                    <td class="small" th:text="${p.label}">Read notifications</td>
+                    <td class="small fw-semibold" th:text="${retentionEffective[p.key]} + ' days'">90 days</td>
+                    <td class="small text-muted" th:text="${p.defaultDays} + ' days'">90 days</td>
+                    <td>
+                        <input type="number" class="form-control form-control-sm" th:name="${p.key}"
+                               th:value="${retentionOverrides[p.key]}" th:min="${p.min}" th:max="${p.max}"
+                               th:placeholder="${p.defaultDays}"/>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="d-flex gap-2 mt-2" style="max-width:600px;">
+                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                <button class="btn btn-sm btn-primary text-nowrap">Save retention</button>
+            </div>
+        </form>
     </div>
 
     <div class="admin-form-section">

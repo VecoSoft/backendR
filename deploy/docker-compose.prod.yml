@@ -79,6 +79,9 @@ services:
       SPACES_KEY: ${SPACES_KEY:-}
       SPACES_SECRET: ${SPACES_SECRET:-}
       SPACES_KEY_PREFIX: ${SPACES_KEY_PREFIX:-}
+      # Daily pruning of old logs and deleted content (docs/data-retention.md). Periods are
+      # editable on Admin -> System health.
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
     volumes:
       # Only used when STORAGE_DRIVER=local.
       - uploads:/app/uploads

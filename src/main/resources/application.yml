@@ -141,3 +141,22 @@ features:
 # Default for "Require approval for new photos" (Moderation -> Photos can override it).
 photos:
   approval-required: ${PHOTOS_APPROVAL_REQUIRED:true}
+
+# --- Data retention (V69, DataRetentionJob) ---
+# Deployment defaults; an ADMIN can override each period from System -> Health -> Data retention
+# (admin_config section RETENTION). Rows are deleted in batches; see docs/data-retention.md.
+retention:
+  enabled: ${RETENTION_ENABLED:true}
+  # Daily at 03:30 Dhaka time (quiet hours).
+  cron: ${RETENTION_CRON:0 30 3 * * *}
+  batch-size: ${RETENTION_BATCH_SIZE:5000}
+  # Upper bound per table per run, so one run stays short; the rest goes on the next run.
+  max-batches-per-run: ${RETENTION_MAX_BATCHES:200}
+  notifications-read-days: ${RETENTION_NOTIFICATIONS_READ_DAYS:90}
+  notifications-unread-days: ${RETENTION_NOTIFICATIONS_UNREAD_DAYS:180}
+  search-log-days: ${RETENTION_SEARCH_LOG_DAYS:180}
+  login-events-days: ${RETENTION_LOGIN_EVENTS_DAYS:180}
+  job-runs-days: ${RETENTION_JOB_RUNS_DAYS:60}
+  # Moderation and financial entries are always kept at least 730 days, whatever this is set to.
+  audit-log-days: ${RETENTION_AUDIT_LOG_DAYS:730}
+  soft-deleted-content-days: ${RETENTION_SOFT_DELETED_CONTENT_DAYS:30}

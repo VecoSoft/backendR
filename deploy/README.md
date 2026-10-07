@@ -47,3 +47,6 @@ docker compose -f docker-compose.prod.yml up -d
   changing `API_DOMAIN`, rebuild the frontend.
 - Postgres data, Caddy certificates, local uploads and the Hugging Face model cache are kept in
   named volumes (`docker volume ls`).
+- Old logs and deleted content are pruned daily by the retention job; see
+  [docs/data-retention.md](../docs/data-retention.md) for periods, env vars and the weekly
+  `VACUUM (ANALYZE)` note.

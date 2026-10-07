@@ -33,11 +33,19 @@ public class JobRunRecorder {
 
     /** Wraps a job body. Usage inside a {@code @Scheduled} method: {@code jobs.track("order-auto-cancel", () -> {...})}. */
     public void track(String jobName, Runnable body) {
+        trackWithSummary(jobName, () -> {
+            body.run();
+            return null;
+        });
+    }
+
+    /** Like {@link #track}, keeping the body's one-line summary (e.g. rows deleted) as the run's message. */
+    public void trackWithSummary(String jobName, java.util.function.Supplier<String> body) {
         Instant start = Instant.now();
         long t0 = System.nanoTime();
         try {
-            body.run();
-            save(jobName, start, (System.nanoTime() - t0) / 1_000_000, "OK", null);
+            String summary = body.get();
+            save(jobName, start, (System.nanoTime() - t0) / 1_000_000, "OK", summary);
         } catch (RuntimeException e) {
             save(jobName, start, (System.nanoTime() - t0) / 1_000_000, "FAILED",
                     e.getClass().getSimpleName() + ": " + e.getMessage());
