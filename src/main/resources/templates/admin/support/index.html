@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Support inbox - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('support')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Support inbox</h1>
+            <p>Requests sent from Help → Contact support.
+                <span class="badge text-bg-danger" th:text="${counts['OPEN']} + ' open'">0 open</span>
+                <span class="badge text-bg-warning" th:text="${counts['PENDING']} + ' waiting on user'">0 pending</span>
+                <span class="badge text-bg-success" th:text="${counts['RESOLVED']} + ' resolved'">0 resolved</span>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <form th:action="@{/admin/support}" method="get" class="admin-toolbar flex-wrap">
+        <select name="status" class="form-select form-select-sm" style="max-width:170px;">
+            <option value="">Open + pending</option>
+            <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == status}"></option>
+            <option value="ALL" th:selected="${status == 'ALL'}">All</option>
+        </select>
+        <select name="category" class="form-select form-select-sm" style="max-width:160px;">
+            <option value="">All categories</option>
+            <option th:each="c : ${categories}" th:value="${c}" th:text="${c}" th:selected="${c == category}"></option>
+        </select>
+        <select name="assignee" class="form-select form-select-sm" style="max-width:160px;">
+            <option value="">Anyone</option>
+            <option value="me" th:selected="${assignee == 'me'}">Assigned to me</option>
+            <option value="none" th:selected="${assignee == 'none'}">Unassigned</option>
+        </select>
+        <input type="text" name="q" th:value="${q}" class="form-control form-control-sm" style="max-width:220px;" placeholder="Subject, name or phone"/>
+        <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-funnel"></i> Filter</button>
+        <a th:href="@{/admin/support}" class="btn btn-sm btn-link">Reset</a>
+    </form>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Request</th><th>From</th><th>Category</th><th>Status</th><th>Assignee</th><th>Updated</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="t : ${tickets}">
+                <td>
+                    <a th:href="@{/admin/support/{id}(id=${t['id']})}" class="fw-semibold" th:text="${t['subject']}">Subject</a>
+                    <span th:if="${t['last_from_staff'] == false and t['status'] != 'RESOLVED'}" class="badge text-bg-info ms-1">new message</span>
+                </td>
+                <td class="small">
+                    <span th:text="${t['user_name']} ?: ${t['phone_number']}">User</span>
+                    <span class="text-muted" th:text="${t['user_role'] == 'BUSINESS_OWNER'} ? ' · owner' : ''"></span>
+                </td>
+                <td class="small" th:text="${t['category']}">OTHER</td>
+                <td><span class="badge" th:text="${t['status']}"
+                          th:classappend="${t['status'] == 'OPEN'} ? 'text-bg-danger' : (${t['status'] == 'PENDING'} ? 'text-bg-warning' : 'text-bg-success')">OPEN</span></td>
+                <td class="small" th:text="${t['assignee_name']} ?: '—'">-</td>
+                <td class="small text-nowrap" th:text="${@fmt.dt(t['updated_at'].toInstant())}">-</td>
+                <td class="text-end"><a th:href="@{/admin/support/{id}(id=${t['id']})}" class="btn btn-sm btn-outline-secondary">Open</a></td>
+            </tr>
+            <tr th:if="${tickets.isEmpty()}"><td colspan="7" class="admin-table-empty">No support requests match.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

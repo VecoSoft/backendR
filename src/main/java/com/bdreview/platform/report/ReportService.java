@@ -103,6 +103,14 @@ public class ReportService {
         this.self = self;
     }
 
+    /** V67 editable notification texts (System → Notifications → Templates) — setter-injected (unit tests construct this service by hand). */
+    private com.bdreview.platform.notification.NotificationTemplateService templates;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplates(com.bdreview.platform.notification.NotificationTemplateService templates) {
+        this.templates = templates;
+    }
+
     private static final Set<ReportTargetType> COMMUNITY_TARGETS = Set.of(
             ReportTargetType.COMMUNITY_POST, ReportTargetType.COMMUNITY_COMMENT, ReportTargetType.COMMUNITY_PROFILE);
 
@@ -345,7 +353,15 @@ public class ReportService {
     public void dispatchResolutionNotifications(UUID reportId, ReportStatus outcome, ReportTargetType targetType,
                                                  ReportReason reason, UUID reporterUserId, String referenceCode,
                                                  UUID targetId, UUID targetOwnerId) {
-        if (outcome == ReportStatus.ACTION_TAKEN) {
+        if (templates != null && (outcome == ReportStatus.ACTION_TAKEN || outcome == ReportStatus.DISMISSED)) {
+            // V67: editable text (System → Notifications → Templates), in the reporter's language.
+            templates.notify(reporterUserId, outcome == ReportStatus.ACTION_TAKEN
+                            ? com.bdreview.platform.notification.NotificationTemplateService.Key.REPORT_ACTION_TAKEN
+                            : com.bdreview.platform.notification.NotificationTemplateService.Key.REPORT_DISMISSED,
+                    java.util.Map.of("referenceCode", referenceCode),
+                    outcome == ReportStatus.ACTION_TAKEN ? NotificationType.REPORT_ACTION_TAKEN : NotificationType.REPORT_DISMISSED,
+                    "REPORT", reportId);
+        } else if (outcome == ReportStatus.ACTION_TAKEN) {
             notificationService.create(reporterUserId, NotificationType.REPORT_ACTION_TAKEN,
                     "Report resolved",
                     "Your report (Ref: " + referenceCode + ") has been reviewed — action was taken.",

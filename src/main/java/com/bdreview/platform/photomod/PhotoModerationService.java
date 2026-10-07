@@ -212,6 +212,13 @@ public class PhotoModerationService {
         p.setReviewedAt(Instant.now());
         repository.save(p);
         applyToSource(p, decision);
+        if (decision == PhotoStatus.REJECTED && templates != null && p.getSourceType() != PhotoSource.HERO
+                && p.getSourceType() != PhotoSource.SUPPORT) {
+            // V67: the uploader learns why (editable text, System → Notifications → Templates).
+            templates.notify(p.getUploaderUserId(), com.bdreview.platform.notification.NotificationTemplateService.Key.PHOTO_REJECTED,
+                    Map.of("photoType", p.getSourceType().label().toLowerCase(), "reason", reason),
+                    com.bdreview.platform.notification.NotificationType.ADMIN_NOTICE, "PHOTO", p.getId());
+        }
         auditLogService.record("PHOTO", p.getId(), decision == PhotoStatus.APPROVED ? "PHOTO_APPROVED" : "PHOTO_REJECTED",
                 reason, Map.of("status", before.name(), "source", p.getSourceType().name(), "url", p.getUrl()),
                 Map.of("status", decision.name()));
@@ -231,6 +238,11 @@ public class PhotoModerationService {
             case LOGO -> applyField("business", "logo_url", p, decision);
             case MENU_ITEM -> applyField("business_menu_item", "photo_url", p, decision);
             case HERO -> applyHero(p, decision);
+            case SUPPORT -> {
+                if (decision == PhotoStatus.REJECTED) {
+                    jdbc.update("UPDATE support_ticket SET screenshot_url = NULL WHERE id = ? AND screenshot_url = ?", p.getSourceId(), p.getUrl());
+                }
+            }
         }
     }
 
@@ -251,6 +263,14 @@ public class PhotoModerationService {
     }
 
     private com.bdreview.platform.adminconfig.AdminConfigService adminConfig;
+
+    /** V67 editable notification texts (System → Notifications → Templates) — setter-injected. */
+    private com.bdreview.platform.notification.NotificationTemplateService templates;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplates(com.bdreview.platform.notification.NotificationTemplateService templates) {
+        this.templates = templates;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     void setAdminConfig(com.bdreview.platform.adminconfig.AdminConfigService adminConfig) {
@@ -344,16 +364,31 @@ public class PhotoModerationService {
     public boolean canServe(String objectKey, UUID viewerId, boolean viewerIsAdmin) {
         String key = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
         List<PhotoModeration> rows = repository.findByObjectKey(key);
+        if (key.startsWith("support/")) {
+            // V67: support screenshots are private from the moment they're uploaded.
+            return viewerIsAdmin || (viewerId != null && rows.stream().anyMatch(p ->
+                    viewerId.equals(p.getUploaderUserId()) && p.getStatus() != PhotoStatus.REJECTED && p.getStatus() != PhotoStatus.DELETED));
+        }
         if (rows.isEmpty()) {
             return true;
         }
         if (rows.stream().anyMatch(p -> p.getStatus() == PhotoStatus.REJECTED || p.getStatus() == PhotoStatus.DELETED)) {
             return false;
         }
+        if (rows.stream().anyMatch(p -> p.getSourceType() == PhotoSource.SUPPORT)) {
+            // V67: support screenshots stay private even once approved.
+            return viewerIsAdmin || (viewerId != null && rows.stream().anyMatch(p -> viewerId.equals(p.getUploaderUserId())));
+        }
         if (rows.stream().anyMatch(p -> p.getStatus() == PhotoStatus.APPROVED)) {
             return true;
         }
         return viewerIsAdmin || (viewerId != null && rows.stream().anyMatch(p -> viewerId.equals(p.getUploaderUserId())));
+    }
+
+    /** V67: a support screenshot is always queued (private, regardless of the approval setting). */
+    @Transactional
+    public void admitSupportScreenshot(UUID ticketId, UUID uploaderId, String url) {
+        queue(PhotoSource.SUPPORT, ticketId, null, uploaderId, url);
     }
 
     public static String objectKeyOf(String url) {

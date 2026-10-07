@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Support request - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('support')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/support}" class="small text-decoration-none">← Support inbox</a>
+            <h1 th:text="${t['subject']}">Subject</h1>
+            <p>
+                <span class="badge text-bg-light border" th:text="${t['category']}">OTHER</span>
+                <span class="badge" th:text="${t['status']}"
+                      th:classappend="${t['status'] == 'OPEN'} ? 'text-bg-danger' : (${t['status'] == 'PENDING'} ? 'text-bg-warning' : 'text-bg-success')">OPEN</span>
+                · opened <span th:text="${@fmt.dt(t['created_at'].toInstant())}">-</span>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-8">
+            <div class="admin-form-section">
+                <h2>Conversation</h2>
+                <div th:each="m : ${messages}" class="border rounded p-2 mb-2"
+                     th:classappend="${m['internal']} ? 'bg-warning-subtle' : (${m['from_staff']} ? 'bg-light' : '')">
+                    <div class="small text-muted d-flex justify-content-between">
+                        <span>
+                            <strong th:text="${m['from_staff']} ? (${m['author_name']} ?: 'Staff') : (${t['user_name']} ?: 'User')">Who</strong>
+                            <span th:if="${m['internal']}" class="badge text-bg-warning ms-1">internal note</span>
+                            <span th:if="${m['from_staff'] and !m['internal']}" class="badge text-bg-primary ms-1">reply</span>
+                        </span>
+                        <span th:text="${@fmt.dt(m['created_at'].toInstant())}">-</span>
+                    </div>
+                    <div class="mt-1" style="white-space:pre-wrap;" th:text="${m['body']}">body</div>
+                </div>
+
+                <div th:if="${screenshotPhotoId != null}" class="mt-3">
+                    <div class="small fw-semibold mb-1">Screenshot <span class="text-muted fw-normal">(private — only the sender and staff can see it)</span></div>
+                    <a th:href="@{/admin/support/{id}/screenshot(id=${t['id']})}" target="_blank" rel="noopener">
+                        <img th:src="@{/admin/support/{id}/screenshot(id=${t['id']})}" alt="Screenshot" style="max-width:100%;max-height:360px;" class="border rounded"/>
+                    </a>
+                </div>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Reply to the user</h2>
+                <form method="post" th:action="@{/admin/support/{id}/reply(id=${t['id']})}">
+                    <textarea name="message" rows="4" class="form-control form-control-sm mb-2" required maxlength="4000"
+                              placeholder="The user sees this in their request and gets a notification."></textarea>
+                    <div class="d-flex gap-2 align-items-center">
+                        <label class="small text-nowrap" for="replyStatus">Then set status</label>
+                        <select id="replyStatus" name="status" class="form-select form-select-sm" style="max-width:220px;">
+                            <option value="PENDING">PENDING (waiting on user)</option>
+                            <option value="RESOLVED">RESOLVED</option>
+                            <option value="OPEN">OPEN</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary">Send reply</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Internal note</h2>
+                <form method="post" th:action="@{/admin/support/{id}/note(id=${t['id']})}" class="d-flex gap-2">
+                    <textarea name="message" rows="2" class="form-control form-control-sm" required maxlength="4000"
+                              placeholder="Only staff see notes."></textarea>
+                    <button class="btn btn-sm btn-outline-secondary text-nowrap align-self-start">Add note</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="admin-form-section">
+                <h2>User</h2>
+                <div class="fw-semibold" th:text="${t['user_name']} ?: 'No name'">Name</div>
+                <div class="small text-mono" th:text="${t['phone_number']}">phone</div>
+                <div class="small text-muted" th:text="${t['user_role']}">CONSUMER</div>
+                <a th:if="${can['USERS_READ']}" th:href="@{/admin/users/{id}(id=${t['user_id']})}" class="btn btn-sm btn-outline-secondary mt-2">
+                    <i class="bi bi-person"></i> Open user page</a>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Status</h2>
+                <form method="post" th:action="@{/admin/support/{id}/status(id=${t['id']})}">
+                    <select name="status" class="form-select form-select-sm mb-2">
+                        <option th:each="s : ${statuses}" th:value="${s}" th:text="${s}" th:selected="${s == t['status']}"></option>
+                    </select>
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-outline-primary">Change status</button>
+                </form>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Assignee</h2>
+                <form method="post" th:action="@{/admin/support/{id}/assign(id=${t['id']})}">
+                    <select name="assigneeId" class="form-select form-select-sm mb-2">
+                        <option value="">Unassigned</option>
+                        <option th:each="s : ${staff}" th:value="${s['id']}" th:text="(${s['name']} ?: 'Admin') + ' · ' + (${s['admin_role']} ?: '')"
+                                th:selected="${s['id'] == t['assignee_id']}"></option>
+                    </select>
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Reason (required)" required maxlength="1000"/>
+                    <button class="btn btn-sm btn-outline-primary">Assign</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

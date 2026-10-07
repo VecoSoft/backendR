@@ -175,6 +175,26 @@ public class ProtectedEditService {
         }
     }
 
+    /** V67: the owner withdraws their own pending change — the listing simply keeps its current values. */
+    @Transactional
+    public BusinessPendingChange cancelByOwner(UUID ownerUserId, UUID businessId, UUID changeId) {
+        BusinessPendingChange change = pending(changeId);
+        if (!change.getBusinessId().equals(businessId)) {
+            throw new ResourceNotFoundException("Change not found");
+        }
+        Business business = businessRepository.findById(businessId).orElseThrow(() -> new ResourceNotFoundException("Business not found"));
+        if (!ownerUserId.equals(business.getOwnerUserId())) {
+            throw new com.bdreview.platform.common.ForbiddenException("You do not own this business listing");
+        }
+        change.setStatus(BusinessPendingChange.Status.CANCELLED);
+        change.setReason("Withdrawn by the owner");
+        change.setReviewedAt(Instant.now());
+        repository.save(change);
+        auditLogService.record("BUSINESS", businessId, "PROTECTED_EDIT_CANCELLED", "Withdrawn by the owner",
+                change.getBeforeJson(), change.getAfterJson());
+        return change;
+    }
+
     // ----------------------------------------------------------------
 
     private void decide(BusinessPendingChange change, BusinessPendingChange.Status status, String reason) {

@@ -18,7 +18,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import java.util.UUID;
 
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
 @RequestMapping("/admin/reviews")
 public class AdminReviewController {
 

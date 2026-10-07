@@ -59,8 +59,23 @@ public class MessageService {
         this.maxAutoRepliesPerHour = maxAutoRepliesPerHour;
     }
 
+    /** V67 chat moderation: a sender blocked after a reported conversation can't send — setter-injected. */
+    private ChatModerationService chatModeration;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setChatModeration(ChatModerationService chatModeration) {
+        this.chatModeration = chatModeration;
+    }
+
+    private void requireCanMessage(UUID senderUserId) {
+        if (chatModeration != null) {
+            chatModeration.requireCanMessage(senderUserId);
+        }
+    }
+
     @Transactional
     public Message send(UUID senderUserId, SendMessageRequest request) {
+        requireCanMessage(senderUserId);
         Business business = businessRepository.findById(request.businessId())
                 .filter(b -> !b.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Business not found"));
@@ -95,6 +110,7 @@ public class MessageService {
         if (!isParticipant) {
             throw new ForbiddenException("You are not part of this conversation");
         }
+        requireCanMessage(senderUserId);
 
         return messageRepository.save(Message.builder()
                 .threadId(threadId).senderUserId(senderUserId).content(content).build());

@@ -201,6 +201,8 @@ public class AccountControlService {
         }
         UserRole oldRole = user.getRole();
         user.setRole(newRole);
+        // V67: promoted to ADMIN → least-privileged admin role until a SUPER_ADMIN changes it.
+        user.setAdminRole(newRole == UserRole.ADMIN ? "SUPPORT" : null);
         try {
             userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {

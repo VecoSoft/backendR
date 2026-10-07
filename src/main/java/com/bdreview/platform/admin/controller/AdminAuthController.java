@@ -11,7 +11,7 @@ public class AdminAuthController {
     @GetMapping("/admin")
     public String root(org.springframework.security.core.Authentication authentication) {
         boolean admin = authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()) || "PERM_DASHBOARD".equals(a.getAuthority()));
         return admin ? "redirect:/admin/dashboard" : "redirect:/admin/community";
     }
 
@@ -25,8 +25,11 @@ public class AdminAuthController {
             // A suspended/banned staff account (V63) is told why, not just "invalid password".
             Object last = request.getSession(false) == null ? null
                     : request.getSession(false).getAttribute(org.springframework.security.web.WebAttributes.AUTHENTICATION_EXCEPTION);
-            model.addAttribute("errorMessage", last instanceof org.springframework.security.authentication.LockedException locked
-                    ? locked.getMessage() : "Invalid phone number or password.");
+            // V63 suspended/banned, V67 missing/wrong 2FA code: show the specific reason.
+            boolean specific = last instanceof org.springframework.security.authentication.LockedException
+                    || last instanceof com.bdreview.platform.admin.config.AdminAuthenticationProvider.TwoFactorRequiredException;
+            model.addAttribute("errorMessage", specific ? ((Exception) last).getMessage() : "Invalid phone number or password.");
+            model.addAttribute("needsCode", last instanceof com.bdreview.platform.admin.config.AdminAuthenticationProvider.TwoFactorRequiredException);
         }
         if (logout != null) {
             model.addAttribute("infoMessage", "You have been logged out.");

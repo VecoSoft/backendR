@@ -71,6 +71,8 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/reviews/recent").permitAll()
                         // V65 curated homepage content (hero, featured categories) — public like the rest of the homepage
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/home").permitAll()
+                        // V67 content pages (Terms, Privacy, FAQ, Help) are public
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/content/*").permitAll()
                         // business page "Overall rating" bar chart — aggregate counts, no review
                         // content, safe to show even while the review list itself stays auth-gated
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/reviews/business/*/rating-breakdown").permitAll()

@@ -31,6 +31,13 @@ public class SmartSearchController {
         this.rateLimiter = rateLimiter;
     }
 
+    private com.bdreview.platform.analytics.SearchLogService searchLog;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setSearchLog(com.bdreview.platform.analytics.SearchLogService searchLog) {
+        this.searchLog = searchLog;
+    }
+
     @GetMapping("/smart-search")
     public ResponseEntity<SmartSearchResponse> smartSearch(
             @RequestParam(required = false) String q,
@@ -53,7 +60,14 @@ public class SmartSearchController {
         var request = new SmartSearchService.Request(q, categoryId, areaId, validPriceTier(priceTier), rating,
                 validCoords ? lat : null, validCoords ? lng : null, sort,
                 Math.min(Math.max(page, 0), 500), size, lang, promoSession);
-        return ResponseEntity.ok(smartSearchService.search(request));
+        SmartSearchResponse response = smartSearchService.search(request);
+        if (page == 0 && searchLog != null) {
+            // V67 analytics: top and zero-result queries (async, never affects the search)
+            searchLog.log(q, areaId, response.intent() == null ? null : response.intent().location(), categoryId,
+                    response.results() == null ? 0 : response.results().totalElements(), "SMART",
+                    com.bdreview.platform.common.CurrentUser.idOrNull());
+        }
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/search-suggestions")

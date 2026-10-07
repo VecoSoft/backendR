@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  * "Require approval for new photos" setting. ADMIN only.
  */
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
 @RequestMapping("/admin/photos")
 public class AdminPhotoController {
 

@@ -100,6 +100,13 @@ public class AuditLogService {
         if (CurrentUser.hasRole("ADMIN")) {
             return "ADMIN";
         }
+        // V67 admin permission roles without ROLE_ADMIN
+        if (CurrentUser.hasRole("ADMIN_STAFF")) {
+            if (CurrentUser.hasRole("MODERATOR")) {
+                return "MODERATOR";
+            }
+            return CurrentUser.hasAuthority("PERM_FINANCE") ? "FINANCE" : "SUPPORT";
+        }
         if (CurrentUser.hasRole("MODERATOR")) {
             return "MODERATOR";
         }

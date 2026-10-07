@@ -16,7 +16,7 @@ import java.util.UUID;
 
 /** Categories, cities, areas, business attributes, and brands are small lookup tables — one page, five tabs. */
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CATALOG')")
 @RequestMapping("/admin/reference-data")
 public class AdminReferenceDataController {
 

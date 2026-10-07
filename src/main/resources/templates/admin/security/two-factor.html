@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Two-factor sign-in - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('account-2fa')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Two-factor sign-in</h1>
+            <p>Protect your admin account with a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password…).</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div th:if="${requiredNotice}" class="alert alert-warning">
+        Your role requires two-factor sign-in. Set it up below to continue using the admin panel.
+    </div>
+
+    <div class="admin-form-section" style="max-width:640px;" th:if="${recoveryCodes != null}">
+        <h2>Your recovery codes</h2>
+        <p class="small text-muted">Each code works once if you lose your phone. Store them somewhere safe — they won't be shown again.</p>
+        <div class="row g-1 text-mono">
+            <div class="col-6" th:each="c : ${recoveryCodes}"><code th:text="${c}">abcde-fghjk</code></div>
+        </div>
+    </div>
+
+    <div class="admin-form-section" style="max-width:640px;">
+        <th:block th:if="${me.totpEnabled}">
+            <p><span class="badge text-bg-success">On</span>
+                <span class="small text-muted" th:text="'since ' + ${@fmt.dt(me.totpEnabledAt)} + ' · ' + ${unusedCodes} + ' unused recovery codes'">since</span></p>
+            <form method="post" th:action="@{/admin/account/2fa/recovery-codes}" class="d-flex gap-2 mb-2">
+                <input type="text" name="code" class="form-control form-control-sm" placeholder="Current 6-digit code" inputmode="numeric" required style="max-width:200px;"/>
+                <button class="btn btn-sm btn-outline-primary">New recovery codes</button>
+            </form>
+            <form method="post" th:action="@{/admin/account/2fa/disable}" class="d-flex gap-2"
+                  onsubmit="return confirm('Turn off two-factor sign-in?');">
+                <input type="text" name="code" class="form-control form-control-sm" placeholder="Code or recovery code" required style="max-width:200px;"/>
+                <button class="btn btn-sm btn-outline-danger">Turn off</button>
+            </form>
+        </th:block>
+
+        <th:block th:if="${!me.totpEnabled and !enrolling}">
+            <p><span class="badge text-bg-light border">Off</span></p>
+            <form method="post" th:action="@{/admin/account/2fa/start}">
+                <button class="btn btn-sm btn-primary">Set up two-factor sign-in</button>
+            </form>
+        </th:block>
+
+        <th:block th:if="${enrolling}">
+            <ol class="small">
+                <li>Scan this QR code with your authenticator app (or type the key in manually).</li>
+                <li>Enter the 6-digit code it shows.</li>
+            </ol>
+            <div id="qr" class="mb-2" th:attr="data-uri=${otpauthUri}"></div>
+            <p class="small">Key: <code class="text-mono" th:text="${me.totpSecret}">SECRET</code></p>
+            <form method="post" th:action="@{/admin/account/2fa/confirm}" class="d-flex gap-2">
+                <input type="text" name="code" class="form-control form-control-sm" placeholder="123456" inputmode="numeric"
+                       autocomplete="one-time-code" required maxlength="6" style="max-width:160px;"/>
+                <button class="btn btn-sm btn-primary">Turn on</button>
+            </form>
+        </th:block>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+    (function () {
+        var el = document.getElementById('qr');
+        if (el && window.QRCode) {
+            new QRCode(el, { text: el.getAttribute('data-uri'), width: 180, height: 180 });
+        }
+    })();
+</script>
+</body>
+</html>

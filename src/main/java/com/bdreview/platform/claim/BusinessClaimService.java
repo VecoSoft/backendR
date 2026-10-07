@@ -150,7 +150,7 @@ public class BusinessClaimService {
 
     /** Admin-only: fetches the raw claim-document bytes for review — never handed out as a direct storage URL. */
     public ClaimDocument getDocument(UUID claimId) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_CONTENT");
         BusinessClaim claim = claimRepository.findById(claimId)
                 .orElseThrow(() -> new ResourceNotFoundException("Claim not found"));
         if (claim.getDocumentRef() == null) {
@@ -175,7 +175,7 @@ public class BusinessClaimService {
 
     @Transactional
     public BusinessClaim resolve(UUID claimId, ResolveClaimRequest request) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_CONTENT");
         BusinessClaim claim = claimRepository.findById(claimId)
                 .orElseThrow(() -> new ResourceNotFoundException("Claim not found"));
 

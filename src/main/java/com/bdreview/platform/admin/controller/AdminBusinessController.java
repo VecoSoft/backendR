@@ -19,7 +19,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 import java.util.UUID;
 
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CATALOG')")
 @RequestMapping("/admin/businesses")
 public class AdminBusinessController {
 

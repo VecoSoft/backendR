@@ -24,7 +24,7 @@ import java.util.function.Supplier;
 
 /** Admin → Commerce (V65): orders, bookings, offers across every business, plus the commerce settings. ADMIN only. */
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_COMMERCE')")
 @RequestMapping("/admin/commerce")
 public class AdminCommerceController {
 

@@ -40,7 +40,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parse(header.substring(7));
                 String userId = claims.getSubject();
                 String role = claims.get("role", String.class);
-                List<SimpleGrantedAuthority> authorities = new ArrayList<>(List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                List<org.springframework.security.core.GrantedAuthority> authorities = new ArrayList<>();
+                if ("ADMIN".equals(role)) {
+                    // V67: an admin token carries its admin role's section permissions, read from the
+                    // database (so a role change is immediate) — ROLE_ADMIN only for SUPER_ADMIN.
+                    UserRepository users = userRepository.getIfAvailable();
+                    User admin = users == null ? null : users.findById(UUID.fromString(userId)).orElse(null);
+                    if (admin != null) {
+                        authorities.addAll(com.bdreview.platform.admin.security.AdminAuthorities.of(admin));
+                    }
+                } else {
+                    authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                }
                 // Community MODERATOR is a staff flag on a normal account (V56), not a JWT role —
                 // resolved from the database on admin API calls only, so revoking it is immediate.
                 if (!"ADMIN".equals(role) && request.getRequestURI().startsWith("/api/v1/admin/")) {

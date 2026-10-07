@@ -32,9 +32,12 @@ public class VerificationService {
     private final JdbcTemplate jdbc;
     private final AuditLogService auditLogService;
     private final AdminNotifier notifier;
+    private final com.bdreview.platform.notification.NotificationTemplateService templates;
 
     public VerificationService(BusinessVerificationRequestRepository repository, BusinessRepository businessRepository,
-                               JdbcTemplate jdbc, AuditLogService auditLogService, AdminNotifier notifier) {
+                               JdbcTemplate jdbc, AuditLogService auditLogService, AdminNotifier notifier,
+                               com.bdreview.platform.notification.NotificationTemplateService templates) {
+        this.templates = templates;
         this.repository = repository;
         this.businessRepository = businessRepository;
         this.jdbc = jdbc;
@@ -111,8 +114,9 @@ public class VerificationService {
         Business business = live(r.getBusinessId());
         decide(r, BusinessVerificationRequest.Status.APPROVED, why);
         setVerified(business, true, "VERIFICATION_APPROVED", why, r.getMethod());
-        notifier.notify(business.getOwnerUserId(), business.getName() + " is now verified",
-                "Your verification request was approved — the Verified badge now shows on your listing.", "BUSINESS", business.getId());
+        templates.notify(business.getOwnerUserId(), com.bdreview.platform.notification.NotificationTemplateService.Key.VERIFICATION_APPROVED,
+                Map.of("businessName", business.getName()), com.bdreview.platform.notification.NotificationType.ADMIN_NOTICE,
+                "BUSINESS", business.getId());
     }
 
     @Transactional
@@ -123,8 +127,9 @@ public class VerificationService {
         decide(r, BusinessVerificationRequest.Status.REJECTED, why);
         auditLogService.record("BUSINESS", business.getId(), "VERIFICATION_REJECTED", why,
                 Map.of("request", r.getId().toString(), "status", "PENDING"), Map.of("status", "REJECTED"));
-        notifier.notify(business.getOwnerUserId(), "Verification request not approved",
-                "Your verification request for " + business.getName() + " was not approved: " + why, "BUSINESS", business.getId());
+        templates.notify(business.getOwnerUserId(), com.bdreview.platform.notification.NotificationTemplateService.Key.VERIFICATION_REJECTED,
+                Map.of("businessName", business.getName(), "reason", why), com.bdreview.platform.notification.NotificationType.ADMIN_NOTICE,
+                "BUSINESS", business.getId());
     }
 
     /** Admin verifies a business directly (no owner request), e.g. after an in-person check. */

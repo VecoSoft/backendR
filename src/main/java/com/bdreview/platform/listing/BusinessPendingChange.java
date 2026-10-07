@@ -21,7 +21,7 @@ import java.util.UUID;
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class BusinessPendingChange {
 
-    public enum Status { PENDING, APPROVED, REJECTED, SUPERSEDED }
+    public enum Status { PENDING, APPROVED, REJECTED, SUPERSEDED, CANCELLED }
 
     @Id
     @GeneratedValue

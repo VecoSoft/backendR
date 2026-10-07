@@ -27,6 +27,22 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class PromoExpiryJob {
+    /** V67 System → Health: every run is recorded (duration, result); setter-injected so unit tests may skip it. */
+    private com.bdreview.platform.health.JobRunRecorder jobRuns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setJobRuns(com.bdreview.platform.health.JobRunRecorder jobRuns) {
+        this.jobRuns = jobRuns;
+    }
+
+    private void tracked(String job, Runnable body) {
+        if (jobRuns == null) {
+            body.run();
+        } else {
+            jobRuns.track(job, body);
+        }
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(PromoExpiryJob.class);
 
@@ -45,21 +61,23 @@ public class PromoExpiryJob {
 
     @Scheduled(fixedRate = 2, timeUnit = TimeUnit.MINUTES, initialDelay = 1)
     public void run() {
-        try {
-            int expired = 0;
-            for (UUID postId : businessPostRepository.findExpiredCandidates(Instant.now())) {
-                if (businessPostService.expire(postId, "Offer, event or promotion window ended")) {
-                    expired++;
+        tracked("promo-expiry", () -> {
+            try {
+                int expired = 0;
+                for (UUID postId : businessPostRepository.findExpiredCandidates(Instant.now())) {
+                    if (businessPostService.expire(postId, "Offer, event or promotion window ended")) {
+                        expired++;
+                    }
                 }
+                int reconciled = reconcile();
+                int ended = boostService.endFinished();
+                if (expired + reconciled + ended > 0) {
+                    log.info("Promotion upkeep: {} post(s) expired, {} reconciled, {} boost(s) ended", expired, reconciled, ended);
+                }
+            } catch (Exception e) {
+                log.warn("Promotion upkeep failed: {}", e.getMessage(), e);
             }
-            int reconciled = reconcile();
-            int ended = boostService.endFinished();
-            if (expired + reconciled + ended > 0) {
-                log.info("Promotion upkeep: {} post(s) expired, {} reconciled, {} boost(s) ended", expired, reconciled, ended);
-            }
-        } catch (Exception e) {
-            log.warn("Promotion upkeep failed: {}", e.getMessage(), e);
-        }
+        });
     }
 
     /** Mirrors community-queue approvals/removals onto the promotion sidecar. */

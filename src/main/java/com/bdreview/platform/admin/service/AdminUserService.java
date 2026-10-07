@@ -50,6 +50,7 @@ public class AdminUserService {
         return userRepository.save(User.builder()
                 .phoneNumber(phone)
                 .role(UserRole.ADMIN)
+                .adminRole(com.bdreview.platform.admin.security.AdminRole.parse(form.getAdminRole()).name())
                 .otpVerified(true)
                 .passwordHash(passwordEncoder.encode(form.getPassword()))
                 .name(form.getName())

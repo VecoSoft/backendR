@@ -97,6 +97,19 @@ public class BusinessController {
         }
     }
 
+    /**
+     * V67: cheap lookup for the web app's middleware, so /business/{oldSlug} itself answers a real
+     * 301 to the kept listing. 200 {"slug": "..."} when the slug was merged away, else 204.
+     */
+    @GetMapping("/slug-redirects/{slug}")
+    public ResponseEntity<java.util.Map<String, String>> slugRedirect(@PathVariable String slug) {
+        return duplicateService.redirectTarget(slug)
+                .map(target -> ResponseEntity.ok()
+                        .cacheControl(org.springframework.http.CacheControl.maxAge(5, java.util.concurrent.TimeUnit.MINUTES))
+                        .body(java.util.Map.of("slug", target)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     @GetMapping("/mine")
     public ResponseEntity<List<BusinessResponse>> mine() {
         return ResponseEntity.ok(businessService.myBusinesses(CurrentUser.id()));
@@ -106,6 +119,13 @@ public class BusinessController {
     @GetMapping("/potential-duplicates")
     public ResponseEntity<List<BusinessResponse>> potentialDuplicates(@RequestParam String q) {
         return ResponseEntity.ok(businessService.searchForClaim(q));
+    }
+
+    private com.bdreview.platform.analytics.SearchLogService searchLog;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setSearchLog(com.bdreview.platform.analytics.SearchLogService searchLog) {
+        this.searchLog = searchLog;
     }
 
     /** §3 Search + Filter (GPS-enabled). All filters are optional/combinable. `q`/`location` are the free-text search-bar fields. */
@@ -126,6 +146,10 @@ public class BusinessController {
 
         var results = businessService.search(categoryId, areaId, priceTier, minRating, lat, lng, radiusMeters,
                 q, location, sort, page, size);
+        if (page == 0 && searchLog != null) {
+            searchLog.log(q, areaId, location == null || location.isBlank() ? null : location.trim(), categoryId,
+                    results.getTotalElements(), "SEARCH", CurrentUser.idOrNull());
+        }
         return ResponseEntity.ok(com.bdreview.platform.common.PageResponse.of(results));
     }
 }

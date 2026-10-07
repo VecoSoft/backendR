@@ -72,7 +72,7 @@ public class FeatureGateInterceptor implements WebMvcConfigurer, HandlerIntercep
         if (MATCHER.match("/api/v1/admin/**", path)) {
             return true;
         }
-        if (flags.isEnabled(PlatformFeature.MAINTENANCE_MODE) && !CurrentUser.hasRole("ADMIN")
+        if (flags.isEnabled(PlatformFeature.MAINTENANCE_MODE) && !CurrentUser.hasRole("ADMIN") && !CurrentUser.hasRole("ADMIN_STAFF")
                 && MAINTENANCE_EXEMPT.stream().noneMatch(p -> MATCHER.match(p, path))) {
             throw new MaintenanceModeException(flags.maintenanceMessage());
         }

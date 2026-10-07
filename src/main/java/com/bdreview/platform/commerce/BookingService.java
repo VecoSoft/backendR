@@ -51,6 +51,22 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 public class BookingService {
+    /** V67 System → Health: every run is recorded (duration, result); setter-injected so unit tests may skip it. */
+    private com.bdreview.platform.health.JobRunRecorder jobRuns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setJobRuns(com.bdreview.platform.health.JobRunRecorder jobRuns) {
+        this.jobRuns = jobRuns;
+    }
+
+    private void tracked(String job, Runnable body) {
+        if (jobRuns == null) {
+            body.run();
+        } else {
+            jobRuns.track(job, body);
+        }
+    }
+
 
     private final BookingRepository bookingRepo;
     private final BookingStatusEventRepository eventRepo;
@@ -400,16 +416,18 @@ public class BookingService {
     @Transactional
     @Scheduled(fixedRate = 15, timeUnit = TimeUnit.MINUTES)
     public void autoExpirePastBookings() {
-        LocalDateTime cutoff = LocalDateTime.now().minusMinutes(commerceConfig().getBookingNoShowGraceMinutes());
-        for (Booking booking : bookingRepo.findByStatusAndSlotEndBefore(BookingStatus.CONFIRMED, cutoff)) {
-            BookingStatus target = booking.getStartedAt() != null ? BookingStatus.COMPLETED : BookingStatus.NO_SHOW;
-            String note = target == BookingStatus.COMPLETED
-                    ? "Auto-completed — booking time passed"
-                    : "Auto-marked no-show — booking time passed without being started";
-            applyTransition(booking, target, null, note);
-            notifier.bookingStatusChanged(booking.getCustomerUserId(), booking.getId(), booking.getBookingNumber(),
-                    target, NotificationType.BOOKING_STATUS_CHANGED);
-        }
+        tracked("booking-auto-close", () -> {
+            LocalDateTime cutoff = LocalDateTime.now().minusMinutes(commerceConfig().getBookingNoShowGraceMinutes());
+            for (Booking booking : bookingRepo.findByStatusAndSlotEndBefore(BookingStatus.CONFIRMED, cutoff)) {
+                BookingStatus target = booking.getStartedAt() != null ? BookingStatus.COMPLETED : BookingStatus.NO_SHOW;
+                String note = target == BookingStatus.COMPLETED
+                        ? "Auto-completed — booking time passed"
+                        : "Auto-marked no-show — booking time passed without being started";
+                applyTransition(booking, target, null, note);
+                notifier.bookingStatusChanged(booking.getCustomerUserId(), booking.getId(), booking.getBookingNumber(),
+                        target, NotificationType.BOOKING_STATUS_CHANGED);
+            }
+        });
     }
 
     // ================================================================

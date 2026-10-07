@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Notifications - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('notifications')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Notifications</h1>
+            <p>Broadcast an in-app notification, or <a th:href="@{/admin/notifications/templates}">edit the notification templates</a>.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-6">
+            <div class="admin-form-section">
+                <h2>New broadcast</h2>
+                <form method="post" th:action="@{/admin/notifications/broadcasts}" id="bcForm" class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold" for="bcTitle">Title</label>
+                        <input id="bcTitle" type="text" name="title" maxlength="140" class="form-control form-control-sm" required/>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-semibold" for="bcBody">Message</label>
+                        <textarea id="bcBody" name="body" rows="3" maxlength="1000" class="form-control form-control-sm" required></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="audience">Audience</label>
+                        <select id="audience" name="audience" class="form-select form-select-sm">
+                            <option th:each="a : ${audiences}" th:value="${a}" th:text="${a.label()}">All</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold" for="areaId">Area</label>
+                        <select id="areaId" name="areaId" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option th:each="a : ${areas}" th:value="${a.id}" th:text="${a.name} + ', ' + ${a.city.name}">Area</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold" for="categoryId">Category</label>
+                        <select id="categoryId" name="categoryId" class="form-select form-select-sm">
+                            <option value="">Any</option>
+                            <option th:each="c : ${categories}" th:value="${c.id}" th:text="${c.name}">Category</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold" for="scheduledAt">Send at (Bangladesh time)</label>
+                        <input id="scheduledAt" type="datetime-local" name="scheduledAt" class="form-control form-control-sm"/>
+                        <div class="form-text">Leave empty to send now.</div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-center">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="sendSms" name="sendSms" value="true" th:disabled="${!smsAvailable}"/>
+                            <label class="form-check-label small" for="sendSms">Also send SMS</label>
+                            <div class="form-text" th:unless="${smsAvailable}">No SMS gateway configured — in-app only.</div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="border rounded p-2 small bg-light" id="preview">
+                            <div class="fw-semibold" id="pvTitle">Title</div>
+                            <div id="pvBody" class="text-muted">Message</div>
+                            <div class="mt-1"><span class="badge text-bg-primary" id="pvCount">…</span> recipients</div>
+                        </div>
+                    </div>
+                    <div class="col-md-9">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-sm btn-primary w-100" onclick="return confirm('Send / schedule this broadcast?');">Send</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="admin-form-section">
+                <h2>History</h2>
+                <table class="admin-table">
+                    <thead><tr><th>Broadcast</th><th>Audience</th><th>Status</th><th>Delivered</th><th>Read</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="b : ${history}">
+                        <td>
+                            <div class="fw-semibold small" th:text="${b['title']}">Title</div>
+                            <div class="small text-muted" th:text="${#strings.abbreviate(b['body'], 80)}">body</div>
+                        </td>
+                        <td class="small">
+                            <span th:text="${b['audience']}">ALL</span>
+                            <div class="text-muted" th:if="${b['area_name'] != null or b['category_name'] != null}"
+                                 th:text="(${b['area_name']} ?: 'any area') + ' · ' + (${b['category_name']} ?: 'any category')">filters</div>
+                        </td>
+                        <td class="small">
+                            <span class="badge text-bg-secondary" th:text="${b['status']}">SENT</span>
+                            <div class="text-muted text-nowrap"
+                                 th:text="${b['sent_at'] != null ? @fmt.dt(b['sent_at'].toInstant()) : (b['scheduled_at'] != null ? 'at ' + @fmt.dt(b['scheduled_at'].toInstant()) : '')}">-</div>
+                        </td>
+                        <td class="small" th:text="${b['recipient_count']} + (${b['sms_count']} > 0 ? ' (+' + ${b['sms_count']} + ' SMS)' : '')">0</td>
+                        <td class="small" th:text="${b['read_count']}">0</td>
+                        <td>
+                            <form th:if="${b['status'] == 'SCHEDULED'}" method="post"
+                                  th:action="@{/admin/notifications/broadcasts/{id}/cancel(id=${b['id']})}" class="d-flex gap-1">
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required style="width:110px;"/>
+                                <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${history.isEmpty()}"><td colspan="6" class="admin-table-empty">No broadcasts yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+<script th:inline="javascript">
+    (function () {
+        var base = /*[[@{/admin/notifications/audience-size}]]*/ '/admin/notifications/audience-size';
+        var form = document.getElementById('bcForm');
+        function text(id, value, fallback) { document.getElementById(id).textContent = value || fallback; }
+        function refresh() {
+            text('pvTitle', form.title.value, 'Title');
+            text('pvBody', form.body.value, 'Message');
+            var q = new URLSearchParams({ audience: form.audience.value });
+            if (form.areaId.value) q.set('areaId', form.areaId.value);
+            if (form.categoryId.value) q.set('categoryId', form.categoryId.value);
+            fetch(base + '?' + q.toString(), { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { text('pvCount', String(j.recipients), '0'); })
+                .catch(function () { text('pvCount', '?', '?'); });
+        }
+        ['input', 'change'].forEach(function (ev) { form.addEventListener(ev, refresh); });
+        refresh();
+    })();
+</script>
+</body>
+</html>

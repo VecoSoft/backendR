@@ -1,0 +1,242 @@
+package com.bdreview.platform.notification;
+
+import com.bdreview.platform.auth.User;
+import com.bdreview.platform.auth.UserRepository;
+import com.bdreview.platform.common.BadRequestException;
+import com.bdreview.platform.common.CurrentUser;
+import com.bdreview.platform.moderation.AuditLogService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Editable notification texts (V67, System → Notifications → Templates) in English and Bangla with
+ * {@code {variable}} placeholders. A row in {@code notification_template} overrides the built-in
+ * default; the recipient's preferred language picks the locale. Cached briefly, evicted on save.
+ */
+@Service
+public class NotificationTemplateService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationTemplateService.class);
+    private static final Pattern VAR = Pattern.compile("\\{([a-zA-Z]+)}");
+    private static final long TTL_MS = 5_000;
+
+    /** Every editable message, its variables and its built-in texts. */
+    public enum Key {
+        ORDER_STATUS("Order status changed", List.of("orderNumber", "status", "businessName"),
+                "Order {orderNumber} {status}", "Your order {orderNumber} from {businessName} is now {status}.",
+                "অর্ডার {orderNumber} {status}", "{businessName}-এ আপনার অর্ডার {orderNumber} এখন {status}।"),
+        BOOKING_STATUS("Booking status changed", List.of("bookingNumber", "status", "businessName"),
+                "Booking {bookingNumber} {status}", "Your booking {bookingNumber} at {businessName} is now {status}.",
+                "বুকিং {bookingNumber} {status}", "{businessName}-এ আপনার বুকিং {bookingNumber} এখন {status}।"),
+        REPORT_ACTION_TAKEN("Report outcome — action taken", List.of("referenceCode"),
+                "Report resolved", "Your report (Ref: {referenceCode}) has been reviewed — action was taken.",
+                "রিপোর্ট নিষ্পত্তি হয়েছে", "আপনার রিপোর্ট (Ref: {referenceCode}) পর্যালোচনা করা হয়েছে — ব্যবস্থা নেওয়া হয়েছে।"),
+        REPORT_DISMISSED("Report outcome — dismissed", List.of("referenceCode"),
+                "Report resolved", "Your report (Ref: {referenceCode}) has been reviewed — insufficient evidence was found.",
+                "রিপোর্ট নিষ্পত্তি হয়েছে", "আপনার রিপোর্ট (Ref: {referenceCode}) পর্যালোচনা করা হয়েছে — যথেষ্ট প্রমাণ পাওয়া যায়নি।"),
+        RESTRICTION_NOTICE("Community restriction notice", List.of("restriction", "reason", "until"),
+                "Your community access is restricted", "{restriction} until {until}. Reason: {reason}",
+                "কমিউনিটিতে আপনার অ্যাক্সেস সীমিত", "{restriction} — {until} পর্যন্ত। কারণ: {reason}"),
+        VERIFICATION_APPROVED("Verification approved", List.of("businessName"),
+                "{businessName} is now verified", "Your verification request was approved — the Verified badge now shows on your listing.",
+                "{businessName} এখন ভেরিফায়েড", "আপনার ভেরিফিকেশন অনুরোধ অনুমোদিত হয়েছে — আপনার লিস্টিংয়ে এখন ভেরিফায়েড ব্যাজ দেখাচ্ছে।"),
+        VERIFICATION_REJECTED("Verification rejected", List.of("businessName", "reason"),
+                "Verification request not approved", "Your verification request for {businessName} was not approved: {reason}",
+                "ভেরিফিকেশন অনুরোধ অনুমোদিত হয়নি", "{businessName}-এর ভেরিফিকেশন অনুরোধ অনুমোদিত হয়নি: {reason}"),
+        PHOTO_REJECTED("Photo rejected", List.of("photoType", "reason"),
+                "Your photo wasn't approved", "Your {photoType} wasn't approved by our moderators: {reason}",
+                "আপনার ছবি অনুমোদিত হয়নি", "আপনার {photoType} আমাদের মডারেটররা অনুমোদন করেননি: {reason}");
+
+        private final String label;
+        private final List<String> variables;
+        private final String enTitle;
+        private final String enBody;
+        private final String bnTitle;
+        private final String bnBody;
+
+        Key(String label, List<String> variables, String enTitle, String enBody, String bnTitle, String bnBody) {
+            this.label = label;
+            this.variables = variables;
+            this.enTitle = enTitle;
+            this.enBody = enBody;
+            this.bnTitle = bnTitle;
+            this.bnBody = bnBody;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public List<String> variables() {
+            return variables;
+        }
+
+        public Text defaults(String locale) {
+            return "bn".equals(locale) ? new Text(bnTitle, bnBody) : new Text(enTitle, enBody);
+        }
+    }
+
+    public record Text(String title, String body) {
+    }
+
+    /** One template as the admin page shows it. */
+    public record View(Key key, Text en, Text bn, boolean enCustom, boolean bnCustom) {
+    }
+
+    private record Cached(Map<String, Text> rows, long at) {
+    }
+
+    private final JdbcTemplate jdbc;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
+    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+
+    public NotificationTemplateService(JdbcTemplate jdbc, NotificationService notificationService,
+                                       UserRepository userRepository, AuditLogService auditLogService) {
+        this.jdbc = jdbc;
+        this.notificationService = notificationService;
+        this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
+    }
+
+    // ---------------------------------------------------------------- reading
+
+    public Text text(Key key, String locale) {
+        String loc = "bn".equals(locale) ? "bn" : "en";
+        Text custom = rows().get(key.name() + "|" + loc);
+        return custom != null ? custom : key.defaults(loc);
+    }
+
+    public Text render(Key key, String locale, Map<String, ?> vars) {
+        Text t = text(key, locale);
+        return new Text(fill(t.title(), vars), fill(t.body(), vars));
+    }
+
+    public List<View> all() {
+        Map<String, Text> rows = rows();
+        return Arrays.stream(Key.values()).map(k -> new View(k, text(k, "en"), text(k, "bn"),
+                rows.containsKey(k.name() + "|en"), rows.containsKey(k.name() + "|bn"))).toList();
+    }
+
+    /** Sample values for previews: each variable shown as an example. */
+    public static Map<String, String> sampleVars(Key key) {
+        Map<String, String> m = new LinkedHashMap<>();
+        for (String v : key.variables()) {
+            m.put(v, switch (v) {
+                case "orderNumber" -> "ORD-1042";
+                case "bookingNumber" -> "BK-2210";
+                case "status" -> "accepted";
+                case "businessName" -> "Kacchi Bhai Dhanmondi";
+                case "referenceCode" -> "RP-8F3K2";
+                case "reason" -> "Doesn't show the business";
+                case "restriction" -> "You've been muted in the community";
+                case "until" -> "12 Oct 2026, 6:00 PM";
+                case "photoType" -> "cover photo";
+                default -> v;
+            });
+        }
+        return m;
+    }
+
+    // ---------------------------------------------------------------- sending
+
+    /** Renders the template in the recipient's language and creates the in-app notification (never throws). */
+    public void notify(UUID recipientUserId, Key key, Map<String, ?> vars, NotificationType type,
+                       String entityType, UUID entityId) {
+        if (recipientUserId == null) {
+            return;
+        }
+        try {
+            String locale = userRepository.findById(recipientUserId).map(User::getPreferredLanguage).orElse("en");
+            Text t = render(key, locale, vars);
+            notificationService.create(recipientUserId, type, t.title(), t.body(), entityType, entityId, NotificationChannel.IN_APP);
+        } catch (RuntimeException e) {
+            log.warn("Could not send {} notification to {}: {}", key, recipientUserId, e.getMessage());
+        }
+    }
+
+    // ---------------------------------------------------------------- editing
+
+    @Transactional
+    public void save(Key key, String locale, String title, String body, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("A reason is required.");
+        }
+        String loc = "bn".equals(locale) ? "bn" : "en";
+        if (title == null || title.isBlank() || body == null || body.isBlank()) {
+            throw new BadRequestException("Title and text can't be empty.");
+        }
+        Set<String> unknown = new TreeSet<>();
+        for (String s : List.of(title, body)) {
+            Matcher m = VAR.matcher(s);
+            while (m.find()) {
+                if (!key.variables().contains(m.group(1))) {
+                    unknown.add("{" + m.group(1) + "}");
+                }
+            }
+        }
+        if (!unknown.isEmpty()) {
+            throw new BadRequestException("Unknown variable(s) " + String.join(", ", unknown) + " — available: "
+                    + key.variables().stream().map(v -> "{" + v + "}").reduce((a, b) -> a + ", " + b).orElse("none"));
+        }
+        Text before = text(key, loc);
+        jdbc.update("""
+                INSERT INTO notification_template (template_key, locale, title, body, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, now())
+                ON CONFLICT (template_key, locale) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body,
+                    updated_by = EXCLUDED.updated_by, updated_at = now()
+                """, key.name(), loc, title.trim(), body.trim(), CurrentUser.idOrNull());
+        cache.clear();
+        auditLogService.record("NOTIFICATION_TEMPLATE", null, "TEMPLATE_" + key.name() + "_" + loc.toUpperCase(), reason.trim(),
+                Map.of("title", before.title(), "body", before.body()), Map.of("title", title.trim(), "body", body.trim()));
+    }
+
+    @Transactional
+    public void reset(Key key, String locale, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("A reason is required.");
+        }
+        String loc = "bn".equals(locale) ? "bn" : "en";
+        Text before = text(key, loc);
+        jdbc.update("DELETE FROM notification_template WHERE template_key = ? AND locale = ?", key.name(), loc);
+        cache.clear();
+        Text after = key.defaults(loc);
+        auditLogService.record("NOTIFICATION_TEMPLATE", null, "TEMPLATE_" + key.name() + "_" + loc.toUpperCase() + "_RESET",
+                reason.trim(), Map.of("title", before.title(), "body", before.body()), Map.of("title", after.title(), "body", after.body()));
+    }
+
+    // ----------------------------------------------------------------
+
+    private Map<String, Text> rows() {
+        Cached c = cache.get("all");
+        if (c != null && System.currentTimeMillis() - c.at() < TTL_MS) {
+            return c.rows();
+        }
+        Map<String, Text> rows = new HashMap<>();
+        jdbc.query("SELECT template_key, locale, title, body FROM notification_template", rs -> {
+            rows.put(rs.getString("template_key") + "|" + rs.getString("locale"), new Text(rs.getString("title"), rs.getString("body")));
+        });
+        cache.put("all", new Cached(rows, System.currentTimeMillis()));
+        return rows;
+    }
+
+    static String fill(String text, Map<String, ?> vars) {
+        Matcher m = VAR.matcher(text);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            Object v = vars.get(m.group(1));
+            m.appendReplacement(out, Matcher.quoteReplacement(v == null ? "" : String.valueOf(v)));
+        }
+        m.appendTail(out);
+        return out.toString();
+    }
+}

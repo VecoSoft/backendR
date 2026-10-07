@@ -101,6 +101,21 @@ public class User {
     @Column(name = "community_trusted", nullable = false)
     private boolean communityTrusted = false;
 
+    /** V67: permission role of an ADMIN account (SUPER_ADMIN / MODERATOR / SUPPORT / FINANCE); null otherwise. */
+    @Column(name = "admin_role", length = 20)
+    private String adminRole;
+
+    /** V67: TOTP 2FA for admin-panel sign-in (base32 secret; set while enrolling, enabled once a code is confirmed). */
+    @Column(name = "totp_secret", columnDefinition = "text")
+    private String totpSecret;
+
+    @Builder.Default
+    @Column(name = "totp_enabled", nullable = false)
+    private boolean totpEnabled = false;
+
+    @Column(name = "totp_enabled_at")
+    private Instant totpEnabledAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -115,6 +130,11 @@ public class User {
         // the NOT NULL constraint.
         if (this.communityProfileId == null) {
             this.communityProfileId = UUID.randomUUID();
+        }
+        // V67: an ADMIN account created without an explicit admin role keeps the historical meaning
+        // of ADMIN (full access). Admin accounts created from the panel always pick a role.
+        if (this.role == UserRole.ADMIN && this.adminRole == null) {
+            this.adminRole = "SUPER_ADMIN";
         }
     }
 

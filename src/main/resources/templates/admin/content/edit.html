@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Edit content page - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('content')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/content}" class="small text-decoration-none">← Content pages</a>
+            <h1><span class="text-capitalize" th:text="${slug}">terms</span> · <span th:text="${locale == 'bn'} ? 'বাংলা' : 'English'">English</span></h1>
+            <p>
+                <span th:if="${page.builtIn()}">Not written yet — the app shows a short built-in text.</span>
+                <span th:unless="${page.builtIn()}" th:text="'Version ' + ${page.version()} + ', last updated ' + ${@fmt.dt(page.updatedAt())}">v1</span>
+                · <a th:href="@{/admin/content/{s}/{l}(s=${slug},l=${locale == 'en' ? 'bn' : 'en'})}"
+                     th:text="${locale == 'en'} ? 'Switch to বাংলা' : 'Switch to English'">Switch</a>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-8">
+            <div class="admin-form-section">
+                <h2>Edit</h2>
+                <form method="post" th:action="@{/admin/content/{s}/{l}(s=${slug},l=${locale})}">
+                    <label class="form-label small fw-semibold" for="title">Title</label>
+                    <input id="title" type="text" name="title" th:value="${page.title()}" maxlength="160" class="form-control form-control-sm mb-2" required/>
+                    <div class="d-flex justify-content-between">
+                        <label class="form-label small fw-semibold" for="bodyMd">Text (Markdown: ## heading, **bold**, - list, [link](https://…))</label>
+                    </div>
+                    <textarea id="bodyMd" name="bodyMd" rows="18" class="form-control form-control-sm text-mono mb-2" required th:text="${page.bodyMd()}"></textarea>
+                    <div class="d-flex gap-2">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason for this change (required)" required maxlength="1000"/>
+                        <button class="btn btn-sm btn-primary text-nowrap">Save &amp; publish</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="admin-form-section" th:if="${viewing != null}">
+                <h2 class="d-flex justify-content-between align-items-center">
+                    <span th:text="'Version ' + ${viewing['version']} + ' — ' + ${viewing['title']}">Version</span>
+                    <form method="post" th:action="@{/admin/content/versions/{id}/restore(id=${viewing['id']})}" class="d-flex gap-1">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required style="width:160px;"/>
+                        <button class="btn btn-sm btn-outline-primary text-nowrap">Restore this version</button>
+                    </form>
+                </h2>
+                <pre class="small border rounded p-2 bg-light" style="white-space:pre-wrap;" th:text="${viewing['body_md']}">body</pre>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="admin-form-section">
+                <h2>Version history</h2>
+                <table class="admin-table">
+                    <thead><tr><th>Ver.</th><th>When / who</th><th>Reason</th></tr></thead>
+                    <tbody>
+                    <tr th:each="h : ${history}">
+                        <td><a th:href="@{/admin/content/{s}/{l}(s=${slug},l=${locale},version=${h['id']})}" th:text="'v' + ${h['version']}">v1</a></td>
+                        <td class="small">
+                            <div class="text-nowrap" th:text="${@fmt.dt(h['created_at'].toInstant())}">-</div>
+                            <div class="text-muted" th:text="${h['updated_by_name']} ?: ''">who</div>
+                        </td>
+                        <td class="small" th:text="${h['reason']}">reason</td>
+                    </tr>
+                    <tr th:if="${history.isEmpty()}"><td colspan="3" class="admin-table-empty">No saved versions yet.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

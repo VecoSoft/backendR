@@ -62,6 +62,13 @@ public class ListingOwnerController {
         return verificationService.historyForOwner(CurrentUser.id(), businessId).stream().map(VerificationView::of).toList();
     }
 
+    /** V67: the owner withdraws a protected edit that is still waiting for review. */
+    @DeleteMapping("/pending-changes/{changeId}")
+    public ResponseEntity<Void> cancelPendingChange(@PathVariable UUID businessId, @PathVariable UUID changeId) {
+        protectedEdits.cancelByOwner(CurrentUser.id(), businessId, changeId);
+        return ResponseEntity.noContent().build();
+    }
+
     /** The protected edit waiting for review (204 when none). Owner only. */
     @GetMapping("/pending-changes")
     public ResponseEntity<PendingChangeView> pendingChange(@PathVariable UUID businessId) {

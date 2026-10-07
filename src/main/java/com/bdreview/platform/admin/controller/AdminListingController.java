@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
  * finder/merge and data checks. ADMIN only; every action needs a reason and is audited.
  */
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CATALOG')")
 @RequestMapping("/admin")
 public class AdminListingController {
 

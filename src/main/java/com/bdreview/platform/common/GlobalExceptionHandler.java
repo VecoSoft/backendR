@@ -22,6 +22,13 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    /** V67 System → Health "recent errors" (in-memory ring buffer). */
+    private final com.bdreview.platform.health.RecentErrors recentErrors;
+
+    public GlobalExceptionHandler(com.bdreview.platform.health.RecentErrors recentErrors) {
+        this.recentErrors = recentErrors;
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex, HttpServletRequest req) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
@@ -133,6 +140,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest req) {
         log.error("Unhandled exception on {} {}", req.getMethod(), req.getRequestURI(), ex);
+        recentErrors.record(req.getMethod(), req.getRequestURI(), ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", req);
     }
 

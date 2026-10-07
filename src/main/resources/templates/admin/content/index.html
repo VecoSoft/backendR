@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Content pages - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('content')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Content pages</h1>
+            <p>Terms, Privacy, FAQ and Help shown in the app, in English and Bangla (Markdown).</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Page</th><th>English</th><th>বাংলা</th><th>Public URL</th></tr></thead>
+            <tbody>
+            <tr th:each="row : ${pages}">
+                <td class="fw-semibold text-capitalize" th:text="${row['slug']}">terms</td>
+                <td th:each="loc : ${ {'en', 'bn'} }" th:with="p=${row.get(loc)}">
+                    <a th:href="@{/admin/content/{s}/{l}(s=${row['slug']},l=${loc})}" th:text="${p.title()}">Title</a>
+                    <div class="small text-muted">
+                        <span th:if="${p.builtIn()}" class="badge text-bg-light border">built-in text</span>
+                        <span th:unless="${p.builtIn()}" th:text="'v' + ${p.version()} + ' · ' + ${@fmt.dt(p.updatedAt())}">v1</span>
+                    </div>
+                </td>
+                <td class="small text-mono" th:text="'/' + ${row['slug']}">/terms</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

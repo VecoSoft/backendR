@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Health - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('health')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>System health</h1>
+            <p>Live checks run when this page loads. <a th:href="@{/admin/health}">Re-check</a></p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6 col-xl-4" th:each="c : ${checks}">
+            <div class="admin-card h-100 mb-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2 class="h6 fw-bold mb-0" th:text="${c.name}">Database</h2>
+                    <span class="badge" th:text="${c.status}"
+                          th:classappend="${c.status == 'UP'} ? 'text-bg-success' : (${c.status == 'DOWN'} ? 'text-bg-danger' : 'text-bg-warning')">UP</span>
+                </div>
+                <div class="small mt-2" th:text="${c.detail}">detail</div>
+                <div class="small text-muted mt-1">
+                    <span th:if="${c.latencyMs != null}" th:text="${c.latencyMs} + ' ms · '">12 ms ·</span>
+                    checked <span th:text="${@fmt.dt(c.checkedAt)}">now</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-form-section">
+        <h2>Scheduled jobs</h2>
+        <table class="admin-table">
+            <thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Duration</th><th>Result</th><th>Next run</th><th style="width:300px;">Run now (reason)</th></tr></thead>
+            <tbody>
+            <tr th:each="j : ${jobs}">
+                <td>
+                    <a th:href="@{/admin/health(job=${j.job.name})}" th:text="${j.job.label}">Job</a>
+                    <div class="small text-muted text-mono" th:text="${j.job.name}">name</div>
+                </td>
+                <td class="small" th:text="${j.job.schedule}">every 5 min</td>
+                <td class="small text-nowrap">
+                    <span th:if="${j.lastRun != null}" th:text="${@fmt.dt(j.lastRun['started_at'].toInstant())}">-</span>
+                    <span th:if="${j.lastRun != null and j.lastRun['manual']}" class="badge text-bg-light border">manual</span>
+                    <span th:if="${j.lastRun == null}" class="text-muted">not yet</span>
+                </td>
+                <td class="small" th:text="${j.lastRun != null ? j.lastRun['duration_ms'] + ' ms' : '—'}">-</td>
+                <td>
+                    <span th:if="${j.lastRun != null}" class="badge" th:text="${j.lastRun['result']}"
+                          th:classappend="${j.lastRun['result'] == 'OK'} ? 'text-bg-success' : 'text-bg-danger'">OK</span>
+                    <div th:if="${j.failuresLast24h > 0}" class="small text-danger" th:text="${j.failuresLast24h} + ' failed in 24 h'">0</div>
+                </td>
+                <td class="small text-nowrap" th:text="${j.nextRun != null ? @fmt.dt(j.nextRun) : '—'}">-</td>
+                <td>
+                    <form th:if="${j.job.safe}" method="post" th:action="@{/admin/health/jobs/{name}/run(name=${j.job.name})}" class="d-flex gap-1">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required maxlength="1000"/>
+                        <button class="btn btn-sm btn-outline-primary text-nowrap">Run now</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="admin-form-section" th:if="${runs != null}">
+        <h2 th:text="'Recent runs — ' + ${jobName}">Recent runs</h2>
+        <table class="admin-table">
+            <thead><tr><th>Started</th><th>Duration</th><th>Result</th><th>Manual</th><th>Message</th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${runs}">
+                <td class="small text-nowrap" th:text="${@fmt.dt(r['started_at'].toInstant())}">-</td>
+                <td class="small" th:text="${r['duration_ms']} + ' ms'">0</td>
+                <td><span class="badge" th:text="${r['result']}" th:classappend="${r['result'] == 'OK'} ? 'text-bg-success' : 'text-bg-danger'">OK</span></td>
+                <td class="small" th:text="${r['manual']} ? 'yes' : ''"></td>
+                <td class="small" th:text="${r['message']} ?: ''"></td>
+            </tr>
+            <tr th:if="${runs.isEmpty()}"><td colspan="5" class="admin-table-empty">No runs recorded yet.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="admin-form-section">
+        <h2>Recent server errors <span class="small text-muted fw-normal">(last 100 on this server, kept in memory)</span></h2>
+        <table class="admin-table">
+            <thead><tr><th>When</th><th>Endpoint</th><th>Error</th></tr></thead>
+            <tbody>
+            <tr th:each="e : ${errors}">
+                <td class="small text-nowrap" th:text="${@fmt.dt(e.at)}">-</td>
+                <td class="small text-mono" th:text="${e.method} + ' ' + ${e.path}">GET /x</td>
+                <td class="small">
+                    <span class="text-mono" th:text="${e.type}">Type</span>
+                    <div class="text-muted" th:text="${e.message}">message</div>
+                </td>
+            </tr>
+            <tr th:if="${errors.isEmpty()}"><td colspan="3" class="admin-table-empty">No server errors since this server started.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

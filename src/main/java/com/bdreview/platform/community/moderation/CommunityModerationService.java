@@ -112,6 +112,14 @@ public class CommunityModerationService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** V67 editable notification texts (System → Notifications → Templates) — setter-injected. */
+    private com.bdreview.platform.notification.NotificationTemplateService templates;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplates(com.bdreview.platform.notification.NotificationTemplateService templates) {
+        this.templates = templates;
+    }
+
     // -----------------------------------------------------------------
     // Role guards
     // -----------------------------------------------------------------
@@ -700,8 +708,17 @@ public class CommunityModerationService {
             case SUSPEND -> "Your community access is suspended";
             case BAN -> "You've been banned from the community";
         };
-        notifyQuietly(userId, NotificationType.COMMUNITY_RESTRICTION, title,
-                CommunityPolicyService.restrictionMessage(r, null), "COMMUNITY_RESTRICTION", r.getId());
+        if (templates != null) {
+            // V67: editable text (System → Notifications → Templates), in the member's language.
+            templates.notify(userId, com.bdreview.platform.notification.NotificationTemplateService.Key.RESTRICTION_NOTICE,
+                    java.util.Map.of("restriction", title, "reason", why,
+                            "until", r.getEndsAt() == null ? "further notice"
+                                    : com.bdreview.platform.accountcontrol.AccountControlService.formatInstant(r.getEndsAt())),
+                    NotificationType.COMMUNITY_RESTRICTION, "COMMUNITY_RESTRICTION", r.getId());
+        } else {
+            notifyQuietly(userId, NotificationType.COMMUNITY_RESTRICTION, title,
+                    CommunityPolicyService.restrictionMessage(r, null), "COMMUNITY_RESTRICTION", r.getId());
+        }
         return r;
     }
 

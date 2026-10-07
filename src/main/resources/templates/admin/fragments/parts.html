@@ -43,213 +43,104 @@
 
 <!-- ============================================================= -->
 <nav th:fragment="sidebar(active)" class="admin-sidebar">
+    <!-- V67: each section shows only for the admin roles that may use it (AdminGlobalModelAdvice#can);
+         the server enforces the same rules (AdminSecurityConfig URL rules + @PreAuthorize). -->
     <ul class="admin-nav">
-        <li th:if="${isAdminUser}">
+        <li th:if="${can['DASHBOARD']}">
             <a th:href="@{/admin/dashboard}" th:classappend="${active == 'dashboard'} ? 'active'">
                 <i class="bi bi-speedometer2"></i> Dashboard
             </a>
         </li>
-        <!-- Community (V56) — ADMIN + MODERATOR; the ADMIN-only items are hidden for moderators
-             and blocked server-side as well (AdminSecurityConfig + @PreAuthorize). -->
-        <li class="admin-nav-section">Community</li>
-        <li>
-            <a th:href="@{/admin/community}" th:classappend="${active == 'c-dashboard'} ? 'active'">
-                <i class="bi bi-activity"></i> Overview
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/community/posts}" th:classappend="${active == 'c-posts'} ? 'active'">
-                <i class="bi bi-file-text"></i> Posts
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/community/comments}" th:classappend="${active == 'c-comments'} ? 'active'">
-                <i class="bi bi-chat-left-text"></i> Comments
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/community/reports}" th:classappend="${active == 'c-reports'} ? 'active'">
-                <i class="bi bi-flag"></i> Reports
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/community/pending}" th:classappend="${active == 'c-pending'} ? 'active'">
-                <i class="bi bi-hourglass-split"></i> Pending approval
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/community/users}" th:classappend="${active == 'c-users'} ? 'active'">
-                <i class="bi bi-person-badge"></i> Members
-            </a>
-        </li>
-        <th:block th:if="${isAdminUser}">
-            <li>
-                <a th:href="@{/admin/community/announcements}" th:classappend="${active == 'c-announcements'} ? 'active'">
-                    <i class="bi bi-megaphone"></i> Announcements
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/community/settings}" th:classappend="${active == 'c-settings'} ? 'active'">
-                    <i class="bi bi-sliders"></i> Settings &amp; topics
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/community/roles}" th:classappend="${active == 'c-roles'} ? 'active'">
-                    <i class="bi bi-shield-lock"></i> Moderators
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/community/audit}" th:classappend="${active == 'c-audit'} ? 'active'">
-                    <i class="bi bi-journal-text"></i> Community audit
-                </a>
-            </li>
+
+        <th:block th:if="${can['COMMUNITY']}">
+            <li class="admin-nav-section">Community</li>
+            <li><a th:href="@{/admin/community}" th:classappend="${active == 'c-dashboard'} ? 'active'"><i class="bi bi-activity"></i> Overview</a></li>
+            <li><a th:href="@{/admin/community/posts}" th:classappend="${active == 'c-posts'} ? 'active'"><i class="bi bi-file-text"></i> Posts</a></li>
+            <li><a th:href="@{/admin/community/comments}" th:classappend="${active == 'c-comments'} ? 'active'"><i class="bi bi-chat-left-text"></i> Comments</a></li>
+            <li><a th:href="@{/admin/community/reports}" th:classappend="${active == 'c-reports'} ? 'active'"><i class="bi bi-flag"></i> Reports</a></li>
+            <li><a th:href="@{/admin/community/pending}" th:classappend="${active == 'c-pending'} ? 'active'"><i class="bi bi-hourglass-split"></i> Pending approval</a></li>
+            <li><a th:href="@{/admin/community/users}" th:classappend="${active == 'c-users'} ? 'active'"><i class="bi bi-person-badge"></i> Members</a></li>
+            <th:block th:if="${can['SUPER']}">
+                <li><a th:href="@{/admin/community/announcements}" th:classappend="${active == 'c-announcements'} ? 'active'"><i class="bi bi-megaphone"></i> Announcements</a></li>
+                <li><a th:href="@{/admin/community/settings}" th:classappend="${active == 'c-settings'} ? 'active'"><i class="bi bi-sliders"></i> Settings &amp; topics</a></li>
+                <li><a th:href="@{/admin/community/roles}" th:classappend="${active == 'c-roles'} ? 'active'"><i class="bi bi-shield-lock"></i> Moderators</a></li>
+                <li><a th:href="@{/admin/community/audit}" th:classappend="${active == 'c-audit'} ? 'active'"><i class="bi bi-journal-text"></i> Community audit</a></li>
+            </th:block>
         </th:block>
-        <!-- Promotions (V58) — queues + live boosts for ADMIN and MODERATOR; the rest ADMIN only. -->
-        <li class="admin-nav-section">Promotions</li>
-        <li>
-            <a th:href="@{/admin/promotions}" th:classappend="${active == 'p-queues'} ? 'active'">
-                <i class="bi bi-inboxes"></i> Review queues
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/promotions/boosts}" th:classappend="${active == 'p-boosts'} ? 'active'">
-                <i class="bi bi-rocket-takeoff"></i> Live boosts
-            </a>
-        </li>
-        <th:block th:if="${isAdminUser}">
-            <li>
-                <a th:href="@{/admin/promotions/settings}" th:classappend="${active == 'p-settings'} ? 'active'">
-                    <i class="bi bi-sliders"></i> Promotion settings
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/promotions/templates}" th:classappend="${active == 'p-templates'} ? 'active'">
-                    <i class="bi bi-palette"></i> Templates
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/promotions/packages}" th:classappend="${active == 'p-packages'} ? 'active'">
-                    <i class="bi bi-box-seam"></i> Boost packages
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/promotions/restrictions}" th:classappend="${active == 'p-restrictions'} ? 'active'">
-                    <i class="bi bi-slash-circle"></i> Restrictions
-                </a>
-            </li>
-            <li>
-                <a th:href="@{/admin/promotions/revenue}" th:classappend="${active == 'p-revenue'} ? 'active'">
-                    <i class="bi bi-cash-coin"></i> Revenue
-                </a>
-            </li>
+
+        <th:block th:if="${can['PROMO_QUEUE']}">
+            <li class="admin-nav-section">Promotions</li>
+            <li><a th:href="@{/admin/promotions}" th:classappend="${active == 'p-queues'} ? 'active'"><i class="bi bi-inboxes"></i> Review queues</a></li>
+            <li><a th:href="@{/admin/promotions/boosts}" th:classappend="${active == 'p-boosts'} ? 'active'"><i class="bi bi-rocket-takeoff"></i> Live boosts</a></li>
+            <th:block th:if="${can['SUPER']}">
+                <li><a th:href="@{/admin/promotions/settings}" th:classappend="${active == 'p-settings'} ? 'active'"><i class="bi bi-sliders"></i> Promotion settings</a></li>
+                <li><a th:href="@{/admin/promotions/templates}" th:classappend="${active == 'p-templates'} ? 'active'"><i class="bi bi-palette"></i> Templates</a></li>
+                <li><a th:href="@{/admin/promotions/packages}" th:classappend="${active == 'p-packages'} ? 'active'"><i class="bi bi-box-seam"></i> Boost packages</a></li>
+                <li><a th:href="@{/admin/promotions/restrictions}" th:classappend="${active == 'p-restrictions'} ? 'active'"><i class="bi bi-slash-circle"></i> Restrictions</a></li>
+            </th:block>
+            <li th:if="${can['FINANCE']}"><a th:href="@{/admin/promotions/revenue}" th:classappend="${active == 'p-revenue'} ? 'active'"><i class="bi bi-cash-coin"></i> Revenue</a></li>
         </th:block>
-        <th:block th:if="${isAdminUser}">
-        <li class="admin-nav-section">Catalog</li>
-        <li>
-            <a th:href="@{/admin/businesses}" th:classappend="${active == 'businesses'} ? 'active'">
-                <i class="bi bi-shop"></i> Businesses
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/reference-data}" th:classappend="${active == 'reference-data'} ? 'active'">
-                <i class="bi bi-tags"></i> Categories &amp; Areas
-            </a>
-        </li>
-        <!-- V65 listing integrity -->
-        <li>
-            <a th:href="@{/admin/verification}" th:classappend="${active == 'verification'} ? 'active'">
-                <i class="bi bi-patch-check-fill"></i> Verification
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/pending-changes}" th:classappend="${active == 'pending-changes'} ? 'active'">
-                <i class="bi bi-hourglass-split"></i> Pending changes
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/duplicates}" th:classappend="${active == 'duplicates'} ? 'active'">
-                <i class="bi bi-files"></i> Duplicates
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/data-checks}" th:classappend="${active == 'data-checks'} ? 'active'">
-                <i class="bi bi-clipboard-check"></i> Data checks
-            </a>
-        </li>
-        <!-- V65 commerce oversight -->
-        <li class="admin-nav-section">Commerce</li>
-        <li>
-            <a th:href="@{/admin/commerce}" th:classappend="${active == 'commerce'} ? 'active'">
-                <i class="bi bi-sliders2"></i> Overview &amp; settings
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/commerce/orders}" th:classappend="${active == 'c-orders'} ? 'active'">
-                <i class="bi bi-bag"></i> Orders
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/commerce/bookings}" th:classappend="${active == 'c-bookings'} ? 'active'">
-                <i class="bi bi-calendar-check"></i> Bookings
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/commerce/offers}" th:classappend="${active == 'c-offers'} ? 'active'">
-                <i class="bi bi-tag"></i> Offers
-            </a>
-        </li>
-        <li class="admin-nav-section">People</li>
-        <li>
-            <a th:href="@{/admin/users}" th:classappend="${active == 'users'} ? 'active'">
-                <i class="bi bi-people"></i> Users
-            </a>
-        </li>
-        <li class="admin-nav-section">Moderation</li>
-        <li>
-            <a th:href="@{/admin/reviews}" th:classappend="${active == 'reviews'} ? 'active'">
-                <i class="bi bi-star"></i> Reviews
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/reviews/settings}" th:classappend="${active == 'review-settings'} ? 'active'">
-                <i class="bi bi-sliders"></i> Review settings
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/photos}" th:classappend="${active == 'photos'} ? 'active'">
-                <i class="bi bi-images"></i> Photos
-                <span th:if="${pendingPhotoCount != null and pendingPhotoCount > 0}"
-                      class="badge rounded-pill text-bg-warning ms-1" th:text="${pendingPhotoCount}">3</span>
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/reports}" th:classappend="${active == 'reports'} ? 'active'">
-                <i class="bi bi-flag"></i> Reports
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/claims}" th:classappend="${active == 'claims'} ? 'active'">
-                <i class="bi bi-patch-check"></i> Business Claims
-            </a>
-        </li>
-        <li class="admin-nav-section">System</li>
-        <li>
-            <a th:href="@{/admin/audit-log}" th:classappend="${active == 'audit'} ? 'active'">
-                <i class="bi bi-clock-history"></i> Audit Log
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/settings}" th:classappend="${active == 'settings'} ? 'active'">
-                <i class="bi bi-toggles"></i> Settings
-            </a>
-        </li>
-        <li>
-            <a th:href="@{/admin/homepage}" th:classappend="${active == 'homepage'} ? 'active'">
-                <i class="bi bi-house"></i> Homepage
-            </a>
-        </li>
-        <!-- NID verification is a feature flag (System → Settings, off by default); it has no admin page of its own. -->
+
+        <th:block th:if="${can['CATALOG']}">
+            <li class="admin-nav-section">Catalog</li>
+            <li><a th:href="@{/admin/businesses}" th:classappend="${active == 'businesses'} ? 'active'"><i class="bi bi-shop"></i> Businesses</a></li>
+            <li><a th:href="@{/admin/reference-data}" th:classappend="${active == 'reference-data'} ? 'active'"><i class="bi bi-tags"></i> Categories &amp; Areas</a></li>
+            <li><a th:href="@{/admin/verification}" th:classappend="${active == 'verification'} ? 'active'"><i class="bi bi-patch-check-fill"></i> Verification</a></li>
+            <li><a th:href="@{/admin/pending-changes}" th:classappend="${active == 'pending-changes'} ? 'active'"><i class="bi bi-hourglass-split"></i> Pending changes</a></li>
+            <li><a th:href="@{/admin/duplicates}" th:classappend="${active == 'duplicates'} ? 'active'"><i class="bi bi-files"></i> Duplicates</a></li>
+            <li><a th:href="@{/admin/data-checks}" th:classappend="${active == 'data-checks'} ? 'active'"><i class="bi bi-clipboard-check"></i> Data checks</a></li>
         </th:block>
+
+        <th:block th:if="${can['COMMERCE']}">
+            <li class="admin-nav-section">Commerce</li>
+            <li><a th:href="@{/admin/commerce}" th:classappend="${active == 'commerce'} ? 'active'"><i class="bi bi-sliders2"></i> Overview</a></li>
+            <li><a th:href="@{/admin/commerce/orders}" th:classappend="${active == 'c-orders'} ? 'active'"><i class="bi bi-bag"></i> Orders</a></li>
+            <li><a th:href="@{/admin/commerce/bookings}" th:classappend="${active == 'c-bookings'} ? 'active'"><i class="bi bi-calendar-check"></i> Bookings</a></li>
+            <li><a th:href="@{/admin/commerce/offers}" th:classappend="${active == 'c-offers'} ? 'active'"><i class="bi bi-tag"></i> Offers</a></li>
+        </th:block>
+
+        <th:block th:if="${can['USERS_READ']}">
+            <li class="admin-nav-section">People</li>
+            <li><a th:href="@{/admin/users}" th:classappend="${active == 'users'} ? 'active'"><i class="bi bi-people"></i> Users</a></li>
+        </th:block>
+
+        <th:block th:if="${can['CONTENT']}">
+            <li class="admin-nav-section">Moderation</li>
+            <li><a th:href="@{/admin/reviews}" th:classappend="${active == 'reviews'} ? 'active'"><i class="bi bi-star"></i> Reviews</a></li>
+            <li th:if="${can['SUPER']}"><a th:href="@{/admin/reviews/settings}" th:classappend="${active == 'review-settings'} ? 'active'"><i class="bi bi-sliders"></i> Review settings</a></li>
+            <li>
+                <a th:href="@{/admin/photos}" th:classappend="${active == 'photos'} ? 'active'">
+                    <i class="bi bi-images"></i> Photos
+                    <span th:if="${pendingPhotoCount != null and pendingPhotoCount > 0}"
+                          class="badge rounded-pill text-bg-warning ms-1" th:text="${pendingPhotoCount}">3</span>
+                </a>
+            </li>
+            <li><a th:href="@{/admin/reports}" th:classappend="${active == 'reports'} ? 'active'"><i class="bi bi-flag"></i> Reports</a></li>
+            <li><a th:href="@{/admin/claims}" th:classappend="${active == 'claims'} ? 'active'"><i class="bi bi-patch-check"></i> Business Claims</a></li>
+            <li><a th:href="@{/admin/chat-reports}" th:classappend="${active == 'chat-reports'} ? 'active'"><i class="bi bi-chat-square-dots"></i> Chat reports</a></li>
+        </th:block>
+
+        <th:block th:if="${can['SUPPORT_INBOX']}">
+            <li class="admin-nav-section">Support</li>
+            <li><a th:href="@{/admin/support}" th:classappend="${active == 'support'} ? 'active'"><i class="bi bi-life-preserver"></i> Inbox</a></li>
+        </th:block>
+
+        <th:block th:if="${can['ANALYTICS'] or can['SUPER']}">
+            <li class="admin-nav-section">System</li>
+            <li th:if="${can['ANALYTICS']}"><a th:href="@{/admin/analytics}" th:classappend="${active == 'analytics'} ? 'active'"><i class="bi bi-graph-up"></i> Analytics</a></li>
+            <th:block th:if="${can['SUPER']}">
+                <li><a th:href="@{/admin/notifications}" th:classappend="${active == 'notifications'} ? 'active'"><i class="bi bi-broadcast"></i> Notifications</a></li>
+                <li><a th:href="@{/admin/health}" th:classappend="${active == 'health'} ? 'active'"><i class="bi bi-heart-pulse"></i> Health</a></li>
+                <li><a th:href="@{/admin/content}" th:classappend="${active == 'content'} ? 'active'"><i class="bi bi-file-earmark-text"></i> Content pages</a></li>
+                <li><a th:href="@{/admin/homepage}" th:classappend="${active == 'homepage'} ? 'active'"><i class="bi bi-house"></i> Homepage</a></li>
+                <li><a th:href="@{/admin/settings}" th:classappend="${active == 'settings'} ? 'active'"><i class="bi bi-toggles"></i> Settings</a></li>
+                <li><a th:href="@{/admin/security}" th:classappend="${active == 'security'} ? 'active'"><i class="bi bi-shield-check"></i> Admin roles &amp; security</a></li>
+                <li><a th:href="@{/admin/audit-log}" th:classappend="${active == 'audit'} ? 'active'"><i class="bi bi-clock-history"></i> Audit Log</a></li>
+            </th:block>
+        </th:block>
+
+        <li class="admin-nav-section">Account</li>
+        <li><a th:href="@{/admin/account/2fa}" th:classappend="${active == 'account-2fa'} ? 'active'"><i class="bi bi-phone-vibrate"></i> Two-factor sign-in</a></li>
     </ul>
 </nav>
 

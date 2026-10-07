@@ -276,7 +276,7 @@ public class PromoAdminService {
     // ---- Revenue (ADMIN) ----
 
     public List<RevenueRow> revenue(int days) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_FINANCE"); // SUPER_ADMIN or FINANCE (V67)
         Instant since = Instant.now().minus(Duration.ofDays(Math.min(Math.max(days, 1), 366)));
         return boostRepository.revenueSince(since).stream().map(r -> new RevenueRow(
                 r[0] instanceof java.sql.Date d ? d.toLocalDate() : (LocalDate) r[0],

@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
 @RequestMapping("/admin/reports")
 public class AdminReportController {
 

@@ -60,7 +60,7 @@ public class BusinessClaimController {
         return ResponseEntity.ok(claimService.fileClaim(CurrentUser.id(), request));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
     @GetMapping("/{id}/document")
     public ResponseEntity<byte[]> document(@PathVariable UUID id) {
         ClaimDocument document = claimService.getDocument(id);
@@ -74,18 +74,18 @@ public class BusinessClaimController {
         return ResponseEntity.ok(claimService.myClaims(CurrentUser.id()));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
     @GetMapping("/queue")
     public ResponseEntity<PageResponse<BusinessClaimResponse>> queue(
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_CONTENT");
         var results = claimService.queue(PageRequest.of(page, size))
                 .map(c -> BusinessClaimResponse.from(c, userRepository.findById(c.getClaimantUserId())
                         .map(User::getName).orElse(null)));
         return ResponseEntity.ok(PageResponse.of(results));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_CONTENT')")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<BusinessClaim> resolve(@PathVariable UUID id, @Valid @RequestBody ResolveClaimRequest request) {
         return ResponseEntity.ok(claimService.resolve(id, request));

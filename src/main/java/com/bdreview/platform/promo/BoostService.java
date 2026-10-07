@@ -195,7 +195,7 @@ public class BoostService {
 
     @Transactional
     public BoostView verifyPayment(UUID boostId, BigDecimal paidAmount, String note) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_FINANCE"); // V67: FINANCE admins (and SUPER_ADMIN)
         Boost b = requireBoost(boostId);
         if (b.getStatus() != BoostStatus.PENDING_PAYMENT || b.getPaymentRef() == null) {
             throw new BadRequestException("There's no submitted payment to verify on this boost.");
@@ -218,7 +218,7 @@ public class BoostService {
 
     @Transactional
     public BoostView rejectPayment(UUID boostId, String reason) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_FINANCE"); // V67: FINANCE admins (and SUPER_ADMIN)
         requireReason(reason);
         Boost b = requireBoost(boostId);
         if (b.getStatus() != BoostStatus.PENDING_PAYMENT) {
@@ -297,7 +297,7 @@ public class BoostService {
 
     @Transactional
     public BoostView refund(UUID boostId, String reason) {
-        CurrentUser.requireRole("ADMIN");
+        CurrentUser.requireAuthority("PERM_FINANCE"); // V67: FINANCE admins (and SUPER_ADMIN)
         requireReason(reason);
         Boost b = requireBoost(boostId);
         if (b.getPaymentVerifiedAt() == null) {

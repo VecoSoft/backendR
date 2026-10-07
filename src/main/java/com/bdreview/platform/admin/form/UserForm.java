@@ -22,6 +22,8 @@ public class UserForm {
     private String preferredLanguage = "en";
     private UserRole role = UserRole.ADMIN;
     private String password;
+    /** V67 permission role for a new admin account — least privilege by default. */
+    private String adminRole = "SUPPORT";
 
     public static UserForm from(User user) {
         UserForm form = new UserForm();

@@ -23,6 +23,22 @@ import java.util.concurrent.TimeUnit;
  */
 @Component
 public class CommunityRestrictionExpiryJob {
+    /** V67 System → Health: every run is recorded (duration, result); setter-injected so unit tests may skip it. */
+    private com.bdreview.platform.health.JobRunRecorder jobRuns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setJobRuns(com.bdreview.platform.health.JobRunRecorder jobRuns) {
+        this.jobRuns = jobRuns;
+    }
+
+    private void tracked(String job, Runnable body) {
+        if (jobRuns == null) {
+            body.run();
+        } else {
+            jobRuns.track(job, body);
+        }
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(CommunityRestrictionExpiryJob.class);
 
@@ -41,26 +57,28 @@ public class CommunityRestrictionExpiryJob {
     @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
     @Transactional
     public void expireRestrictions() {
-        List<CommunityRestriction> expired = restrictionRepository.findExpired(Instant.now());
-        if (expired.isEmpty()) {
-            return;
-        }
-        restrictionRepository.markExpired(expired.stream().map(CommunityRestriction::getId).toList());
-        for (CommunityRestriction r : expired) {
-            auditLogService.recordSystem("COMMUNITY_USER", r.getUserId(), "RESTRICTION_EXPIRED",
-                    "Scheduled expiry", Map.of("restrictionId", r.getId(), "type", r.getType().name(), "status", "ACTIVE"),
-                    Map.of("restrictionId", r.getId(), "type", r.getType().name(), "status", "EXPIRED"));
-            if (r.getType() != CommunityRestriction.Type.WARN) {
-                try {
-                    notificationService.create(r.getUserId(), NotificationType.COMMUNITY_RESTRICTION,
-                            "Your community restriction has ended",
-                            "Your " + r.getType().name().toLowerCase(Locale.ROOT) + " has ended — you can post and comment again.",
-                            "COMMUNITY_RESTRICTION", r.getId(), NotificationChannel.IN_APP);
-                } catch (RuntimeException e) {
-                    log.warn("Could not notify {} about an expired restriction", r.getUserId(), e);
+        tracked("community-restriction-expiry", () -> {
+            List<CommunityRestriction> expired = restrictionRepository.findExpired(Instant.now());
+            if (expired.isEmpty()) {
+                return;
+            }
+            restrictionRepository.markExpired(expired.stream().map(CommunityRestriction::getId).toList());
+            for (CommunityRestriction r : expired) {
+                auditLogService.recordSystem("COMMUNITY_USER", r.getUserId(), "RESTRICTION_EXPIRED",
+                        "Scheduled expiry", Map.of("restrictionId", r.getId(), "type", r.getType().name(), "status", "ACTIVE"),
+                        Map.of("restrictionId", r.getId(), "type", r.getType().name(), "status", "EXPIRED"));
+                if (r.getType() != CommunityRestriction.Type.WARN) {
+                    try {
+                        notificationService.create(r.getUserId(), NotificationType.COMMUNITY_RESTRICTION,
+                                "Your community restriction has ended",
+                                "Your " + r.getType().name().toLowerCase(Locale.ROOT) + " has ended — you can post and comment again.",
+                                "COMMUNITY_RESTRICTION", r.getId(), NotificationChannel.IN_APP);
+                    } catch (RuntimeException e) {
+                        log.warn("Could not notify {} about an expired restriction", r.getUserId(), e);
+                    }
                 }
             }
-        }
-        log.info("Expired {} community restriction(s)", expired.size());
+            log.info("Expired {} community restriction(s)", expired.size());
+        });
     }
 }

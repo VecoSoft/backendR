@@ -29,7 +29,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 @Controller
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_USERS_MANAGE')")
 @RequestMapping("/admin/users")
 public class AdminUserController {
 
@@ -58,6 +58,7 @@ public class AdminUserController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_USERS_READ')")
     public String list(@RequestParam(required = false) String query,
                         @RequestParam(required = false) UserRole role,
                         @RequestParam(required = false) String status,
@@ -77,6 +78,7 @@ public class AdminUserController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_USERS_READ')")
     public String view(@PathVariable UUID id, @RequestParam(required = false) String tab, Model model) {
         var user = adminUserService.get(id);
         boolean activityTab = "activity".equals(tab);

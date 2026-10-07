@@ -18,12 +18,34 @@ import java.util.UUID;
 @RequestMapping("/api/v1/messages")
 public class MessageController {
 
+    public record ReportConversationRequest(String reason, String details) {
+    }
+
     private final MessageService messageService;
     private final UserRepository userRepository;
+    private final ChatModerationService chatModeration;
 
-    public MessageController(MessageService messageService, UserRepository userRepository) {
+    public MessageController(MessageService messageService, UserRepository userRepository, ChatModerationService chatModeration) {
         this.messageService = messageService;
         this.userRepository = userRepository;
+        this.chatModeration = chatModeration;
+    }
+
+    /** V67: a participant reports the conversation (chat ⋯ menu) — only reported chats ever reach admins. */
+    @PostMapping("/threads/{threadId}/report")
+    public ResponseEntity<Map<String, Object>> report(@PathVariable UUID threadId, @RequestBody ReportConversationRequest request) {
+        UUID id = chatModeration.report(CurrentUser.id(), threadId, request.reason(), request.details());
+        return ResponseEntity.ok(Map.of("id", id, "status", "OPEN"));
+    }
+
+    /** V67: whether the caller may send messages right now (false while a messaging block is active). */
+    @GetMapping("/can-send")
+    public Map<String, Object> canSend() {
+        Map<String, Object> out = new HashMap<>();
+        var until = chatModeration.blockedUntil(CurrentUser.id());
+        out.put("canSend", until.isEmpty());
+        out.put("blockedUntil", until.orElse(null));
+        return out;
     }
 
     /** Consumer starts (or continues) a thread with a business — see spec §16. */
@@ -62,8 +84,9 @@ public class MessageController {
     @GetMapping("/threads/{threadId}")
     public ResponseEntity<PageResponse<MessageResponse>> history(@PathVariable UUID threadId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        Page<Message> messages = messageService.history(threadId, page, size);
         UUID viewerId = CurrentUser.id();
+        chatModeration.requireParticipant(viewerId, threadId);
+        Page<Message> messages = messageService.history(threadId, page, size);
         Map<UUID, String> names = namesOf(messages.getContent().stream().map(Message::getSenderUserId).toList());
         Map<UUID, List<ReactionSummary>> reactions = messageService.reactionSummariesFor(
                 messages.getContent().stream().map(Message::getId).toList(), viewerId);

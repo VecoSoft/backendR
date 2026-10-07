@@ -38,6 +38,22 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 public class OrderService {
+    /** V67 System → Health: every run is recorded (duration, result); setter-injected so unit tests may skip it. */
+    private com.bdreview.platform.health.JobRunRecorder jobRuns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setJobRuns(com.bdreview.platform.health.JobRunRecorder jobRuns) {
+        this.jobRuns = jobRuns;
+    }
+
+    private void tracked(String job, Runnable body) {
+        if (jobRuns == null) {
+            body.run();
+        } else {
+            jobRuns.track(job, body);
+        }
+    }
+
 
     /** Fallback when the business hasn't set a default prep time (CommerceSettings#defaultPrepMinutes is null). */
     private static final int DEFAULT_PREP_MINUTES = 20;
@@ -342,15 +358,17 @@ public class OrderService {
     @Transactional
     @Scheduled(fixedRate = 5, timeUnit = TimeUnit.MINUTES)
     public void autoExpireStalePendingOrders() {
-        int minutes = commerceConfig().getOrderAutoCancelMinutes();
-        Instant cutoff = Instant.now().minus(minutes, ChronoUnit.MINUTES);
-        for (BusinessOrder order : orderRepo.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff)) {
-            order.setRejectionReason("Auto-cancelled — the business didn't respond in time");
-            applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within " + humanMinutes(minutes));
-            releaseOfferRedemptions(order.getId());
-            notifier.statusChanged(order.getCustomerUserId(), order.getId(), order.getOrderNumber(),
-                    OrderStatus.CANCELLED, NotificationType.ORDER_STATUS_CHANGED);
-        }
+        tracked("order-auto-cancel", () -> {
+            int minutes = commerceConfig().getOrderAutoCancelMinutes();
+            Instant cutoff = Instant.now().minus(minutes, ChronoUnit.MINUTES);
+            for (BusinessOrder order : orderRepo.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, cutoff)) {
+                order.setRejectionReason("Auto-cancelled — the business didn't respond in time");
+                applyTransition(order, OrderStatus.CANCELLED, null, "Auto-cancelled — no response within " + humanMinutes(minutes));
+                releaseOfferRedemptions(order.getId());
+                notifier.statusChanged(order.getCustomerUserId(), order.getId(), order.getOrderNumber(),
+                        OrderStatus.CANCELLED, NotificationType.ORDER_STATUS_CHANGED);
+            }
+        });
     }
 
     // ================================================================

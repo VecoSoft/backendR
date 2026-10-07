@@ -51,6 +51,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class AdminPhase1IntegrationTest {
 
     private static final String PASSWORD = "Secret-pass-123";
+    private static final java.time.Instant RUN_STARTED = java.time.Instant.now();
     private static final String FILES = "http://localhost:8085/api/v1/storage/files/";
 
     @Autowired MockMvc mvc;
@@ -79,6 +80,10 @@ class AdminPhase1IntegrationTest {
     void setUp() {
         jdbc.update("DELETE FROM platform_setting");
         settingStore.evict();
+        // The IT database persists between runs: retire this suite's listings from earlier runs (same name,
+        // phone and spot every time) so they don't flood other suites' duplicate-finder results.
+        jdbc.update("UPDATE business SET deleted_at = now() WHERE slug LIKE 'p1-%' AND deleted_at IS NULL AND created_at < ?",
+                java.sql.Timestamp.from(RUN_STARTED));
         jdbc.update("UPDATE community_settings SET settings = '{}'::jsonb WHERE id = 1");
         communitySettings.evict();
 

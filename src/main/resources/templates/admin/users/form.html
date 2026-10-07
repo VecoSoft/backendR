@@ -43,6 +43,15 @@
                 <input type="password" th:field="*{password}" class="form-control" minlength="8" required/>
                 <div class="form-text">At least 8 characters.</div>
             </div>
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">Admin role</label>
+                <select th:field="*{adminRole}" class="form-select">
+                    <option value="SUPPORT">SUPPORT — users (read), orders, bookings, support inbox</option>
+                    <option value="MODERATOR">MODERATOR — content, reports, photos, community, reviews</option>
+                    <option value="FINANCE">FINANCE — boost payments, refunds, revenue, analytics</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN — everything</option>
+                </select>
+            </div>
             <button type="submit" class="btn btn-primary"><i class="bi bi-person-plus"></i> Create account</button>
         </form>
     </div>

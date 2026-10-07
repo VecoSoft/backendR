@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Chat reports - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('chat-reports')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <h1>Chat reports</h1>
+            <p>Conversations are private. Only chats a participant reported appear here — <span th:text="${openCount}">0</span> open.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <ul class="nav nav-pills mb-3">
+        <li class="nav-item" th:each="s : ${ {'OPEN', 'ACTIONED', 'DISMISSED', 'ALL'} }">
+            <a class="nav-link py-1 px-2 small" th:classappend="${s == status} ? 'active'" th:href="@{/admin/chat-reports(status=${s})}" th:text="${s}">OPEN</a>
+        </li>
+    </ul>
+
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Reason</th><th>Reported</th><th>By</th><th>Business chat</th><th>Status</th><th>Reported at</th><th></th></tr></thead>
+            <tbody>
+            <tr th:each="r : ${reports}">
+                <td>
+                    <span class="badge text-bg-danger" th:text="${r['reason']}">SPAM</span>
+                    <div class="small text-muted" th:if="${r['details'] != null}" th:text="${#strings.abbreviate(r['details'], 80)}">details</div>
+                </td>
+                <td class="small" th:text="${r['reported_name']} ?: 'User'">user</td>
+                <td class="small" th:text="${r['reporter_name']} ?: 'User'">user</td>
+                <td class="small">
+                    <span th:text="${r['business_name']}">Biz</span>
+                    <span th:if="${r['reports_on_thread'] > 1}" class="badge text-bg-warning" th:text="${r['reports_on_thread']} + ' reports'">2</span>
+                </td>
+                <td class="small">
+                    <span th:text="${r['status']}">OPEN</span>
+                    <span th:if="${r['action'] != null}" class="text-muted" th:text="'· ' + ${r['action']}"></span>
+                </td>
+                <td class="small text-nowrap" th:text="${@fmt.dt(r['created_at'].toInstant())}">-</td>
+                <td class="text-end"><a th:href="@{/admin/chat-reports/{id}(id=${r['id']})}" class="btn btn-sm btn-outline-secondary">Review</a></td>
+            </tr>
+            <tr th:if="${reports.isEmpty()}"><td colspan="7" class="admin-table-empty">No chat reports here.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

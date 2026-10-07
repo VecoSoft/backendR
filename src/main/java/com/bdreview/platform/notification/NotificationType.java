@@ -34,5 +34,8 @@ public enum NotificationType {
     COMMUNITY_RESTRICTION,
     // Admin panel Phase 2 (V65) — support/moderation decisions: order or booking cancelled by
     // support, offer ended/hidden, verification and protected-edit outcomes
-    ADMIN_NOTICE
+    ADMIN_NOTICE,
+    // V67: admin broadcasts (System → Notifications) and support-inbox replies
+    BROADCAST,
+    SUPPORT_REPLY
 }

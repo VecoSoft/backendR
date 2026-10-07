@@ -43,6 +43,22 @@ public final class CurrentUser {
                 .anyMatch(a -> a.getAuthority().equals("ROLE_" + role));
     }
 
+    /**
+     * Any granted authority, e.g. an admin-panel permission {@code PERM_CONTENT} (V67). ROLE_ADMIN
+     * (SUPER_ADMIN) implies every {@code PERM_*}.
+     */
+    public static boolean hasAuthority(String authority) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals(authority)
+                || (authority.startsWith("PERM_") && a.getAuthority().equals("ROLE_ADMIN")));
+    }
+
+    public static void requireAuthority(String authority) {
+        if (!hasAuthority(authority)) {
+            throw new ForbiddenException("You don't have access to this admin section");
+        }
+    }
+
     public static void requireRole(String role) {
         if (!hasRole(role)) {
             throw new ForbiddenException("Requires role " + role);

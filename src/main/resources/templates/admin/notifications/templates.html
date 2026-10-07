@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Notification templates - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('notifications')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/notifications}" class="small text-decoration-none">← Notifications</a>
+            <h1>Notification templates</h1>
+            <p>The text users get for these events, in English and Bangla (picked by the user's language). Use the variables listed.</p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <ul class="nav nav-pills mb-3 flex-wrap">
+        <li class="nav-item" th:each="t : ${templates}">
+            <a class="nav-link py-1 px-2 small" th:classappend="${t.key() == key} ? 'active'"
+               th:href="@{/admin/notifications/templates(key=${t.key()})}">
+                <span th:text="${t.key().label()}">Template</span>
+                <span th:if="${t.enCustom() or t.bnCustom()}" class="badge text-bg-warning ms-1">edited</span>
+            </a>
+        </li>
+    </ul>
+
+    <p class="small">Variables:
+        <code th:each="v : ${key.variables()}" th:text="'{' + ${v} + '} '">{x}</code>
+    </p>
+
+    <div class="row g-3">
+        <div class="col-lg-6" th:each="loc : ${ {'en', 'bn'} }"
+             th:with="t=${loc == 'en' ? view.en() : view.bn()}, custom=${loc == 'en' ? view.enCustom() : view.bnCustom()}, preview=${loc == 'en' ? previewEn : previewBn}">
+            <div class="admin-form-section">
+                <h2>
+                    <span th:text="${loc == 'en'} ? 'English' : 'বাংলা (Bangla)'">English</span>
+                    <span class="badge ms-1" th:classappend="${custom} ? 'text-bg-warning' : 'text-bg-light border'"
+                          th:text="${custom} ? 'edited' : 'built-in'">built-in</span>
+                </h2>
+                <form method="post" th:action="@{/admin/notifications/templates/{key}/{loc}(key=${key},loc=${loc})}">
+                    <button type="submit" disabled hidden aria-hidden="true"></button>
+                    <label class="form-label small fw-semibold">Title</label>
+                    <input type="text" name="title" class="form-control form-control-sm mb-2" th:value="${t.title()}" maxlength="200"/>
+                    <label class="form-label small fw-semibold">Text</label>
+                    <textarea name="body" rows="3" class="form-control form-control-sm mb-2" th:text="${t.body()}" maxlength="1000"></textarea>
+                    <div class="border rounded p-2 small bg-light mb-2">
+                        <div class="text-muted">Preview with sample values</div>
+                        <div class="fw-semibold" th:text="${preview.title()}">title</div>
+                        <div th:text="${preview.body()}">body</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                        <button class="btn btn-sm btn-primary text-nowrap" name="action" value="save">Save</button>
+                        <button th:if="${custom}" class="btn btn-sm btn-outline-secondary text-nowrap" name="action" value="reset"
+                                onclick="return confirm('Reset to the built-in text?');">Reset</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <p class="small text-muted">Sample values used in the preview:
+        <span th:each="e : ${sample}" th:text="'{' + ${e.key} + '} = ' + ${e.value} + ' · '">x</span>
+    </p>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

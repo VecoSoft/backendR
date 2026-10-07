@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Chat report - BD Review Admin</title>
+    <th:block th:replace="~{admin/fragments/parts :: head-assets}"></th:block>
+</head>
+<body class="admin-body">
+<div th:replace="~{admin/fragments/parts :: topbar}"></div>
+<div th:replace="~{admin/fragments/parts :: sidebar('chat-reports')}"></div>
+
+<main class="admin-main">
+    <div class="admin-page-header">
+        <div>
+            <a th:href="@{/admin/chat-reports}" class="small text-decoration-none">← Chat reports</a>
+            <h1>Reported conversation</h1>
+            <p>
+                <span class="badge text-bg-danger" th:text="${r['reason']}">SPAM</span>
+                reported by <strong th:text="${r['reporter_name']} ?: 'User'">A</strong>
+                against <strong th:text="${r['reported_name']} ?: 'User'">B</strong>
+                in the chat with <strong th:text="${r['business_name']}">Biz</strong>
+                · <span th:text="${@fmt.dt(r['created_at'].toInstant())}">-</span>
+            </p>
+        </div>
+    </div>
+
+    <div th:replace="~{admin/fragments/parts :: alerts}"></div>
+
+    <div class="row g-3">
+        <div class="col-xl-7">
+            <div class="admin-form-section">
+                <h2>Messages <span class="small text-muted fw-normal">(latest 200, newest first)</span></h2>
+                <div th:if="${r['details'] != null}" class="alert alert-light small py-2">
+                    <strong>Reporter's note:</strong> <span th:text="${r['details']}">details</span>
+                </div>
+                <div th:each="m : ${messages}" class="border rounded p-2 mb-2"
+                     th:classappend="${m['sender_user_id'] == r['reported_user_id']} ? 'border-danger-subtle bg-danger-subtle' : ''">
+                    <div class="small text-muted d-flex justify-content-between">
+                        <strong th:text="${m['sender_name']} ?: 'User'">Sender</strong>
+                        <span th:text="${@fmt.dt(m['created_at'].toInstant())}">-</span>
+                    </div>
+                    <div style="white-space:pre-wrap;" th:text="${m['content']}">text</div>
+                </div>
+                <p th:if="${messages.isEmpty()}" class="text-muted small">No messages.</p>
+            </div>
+        </div>
+
+        <div class="col-xl-5">
+            <div class="admin-form-section" th:if="${r['status'] == 'OPEN'}">
+                <h2>Action</h2>
+                <form method="post" th:action="@{/admin/chat-reports/{id}/action(id=${r['id']})}">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" required maxlength="1000"
+                           placeholder="Reason (required — the user sees it for warn/block)"/>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <button class="btn btn-sm btn-outline-warning" name="action" value="warn">Warn sender</button>
+                        <span class="d-flex gap-1 align-items-center">
+                            <select name="days" class="form-select form-select-sm" style="width:auto;">
+                                <option th:each="d : ${blockDays}" th:value="${d}" th:text="${d} + (${d} == 1 ? ' day' : ' days')" th:selected="${d == 7}">7 days</option>
+                            </select>
+                            <button class="btn btn-sm btn-danger" name="action" value="block"
+                                    onclick="return confirm('Block this user from sending messages?');">Block messaging</button>
+                        </span>
+                        <button class="btn btn-sm btn-outline-secondary" name="action" value="dismiss">Dismiss</button>
+                    </div>
+                </form>
+            </div>
+            <div class="admin-form-section" th:unless="${r['status'] == 'OPEN'}">
+                <h2>Outcome</h2>
+                <p class="small mb-1"><span class="badge text-bg-secondary" th:text="${r['status']}">ACTIONED</span>
+                    <span th:text="${r['action']}">WARN</span> by <span th:text="${r['resolved_by_name']} ?: 'admin'">admin</span>
+                    · <span th:text="${r['resolved_at'] != null ? @fmt.dt(r['resolved_at'].toInstant()) : ''}">-</span></p>
+                <p class="small text-muted mb-0" th:text="${r['resolution_note']}">note</p>
+            </div>
+
+            <div class="admin-form-section">
+                <h2>Messaging blocks — <span th:text="${r['reported_name']} ?: 'user'">user</span></h2>
+                <table class="admin-table">
+                    <thead><tr><th>Until</th><th>Reason</th><th></th></tr></thead>
+                    <tbody>
+                    <tr th:each="b : ${blocks}">
+                        <td class="small text-nowrap">
+                            <span th:text="${@fmt.dt(b['ends_at'].toInstant())}">-</span>
+                            <span th:if="${b['active']}" class="badge text-bg-danger">active</span>
+                            <span th:if="${b['lifted_at'] != null}" class="badge text-bg-light border">lifted</span>
+                        </td>
+                        <td class="small" th:text="${b['reason']}">reason</td>
+                        <td>
+                            <form th:if="${b['active']}" method="post" class="d-flex gap-1"
+                                  th:action="@{/admin/chat-reports/{id}/blocks/{bid}/lift(id=${r['id']},bid=${b['id']})}">
+                                <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason" required style="width:110px;"/>
+                                <button class="btn btn-sm btn-outline-secondary">Lift</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <tr th:if="${blocks.isEmpty()}"><td colspan="3" class="admin-table-empty">No blocks.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+
+<th:block th:replace="~{admin/fragments/parts :: scripts}"></th:block>
+</body>
+</html>

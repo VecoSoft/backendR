@@ -53,6 +53,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class AdminPhase2IntegrationTest {
 
     private static final String PASSWORD = "Secret-pass-123";
+    private static final java.time.Instant RUN_STARTED = java.time.Instant.now();
 
     @Autowired MockMvc mvc;
     @Autowired UserRepository userRepository;
@@ -83,6 +84,10 @@ class AdminPhase2IntegrationTest {
         settingStore.evict();
         jdbc.update("DELETE FROM admin_config");
         adminConfig.evict();
+        // The IT database persists between runs: retire Phase 1/2 listings created before this suite
+        // started, so leftover same-phone/same-name fixtures don't push a fresh pair off the top-100 page.
+        jdbc.update("UPDATE business SET deleted_at = now() WHERE (slug LIKE 'p1-%' OR slug LIKE 'p2-%') AND deleted_at IS NULL AND created_at < ?",
+                java.sql.Timestamp.from(RUN_STARTED));
 
         admin = saveUser(UserRole.ADMIN, null, null);
         moderator = saveUser(UserRole.CONSUMER, "mod" + suffix(), User.STAFF_MODERATOR);

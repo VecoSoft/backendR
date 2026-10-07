@@ -1,5 +1,6 @@
 package com.bdreview.platform.admin.controller;
 
+import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.business.Area;
 import com.bdreview.platform.business.AreaRepository;
 import com.bdreview.platform.business.BusinessRepository;
@@ -45,7 +46,9 @@ public class AdminPromotionController {
         this.businessRepository = businessRepository;
     }
 
+    // Runs before every handler here, so it must not inherit the class-level role check (FINANCE uses Revenue).
     @ModelAttribute("frontendUrl")
+    @PreAuthorize("permitAll()")
     public String frontendUrl(@Value("${app.frontend-url:http://localhost:3000}") String url) {
         return url;
     }
@@ -55,6 +58,7 @@ public class AdminPromotionController {
     // -----------------------------------------------------------------
 
     @GetMapping
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_MODERATOR','PERM_FINANCE')")
     public String queues(Model model) {
         model.addAttribute("pendingPosts", adminService.pendingPosts());
         model.addAttribute("pendingPayment", boostService.adminList(EnumSet.of(BoostStatus.PENDING_PAYMENT)).stream()
@@ -85,7 +89,7 @@ public class AdminPromotionController {
     }
 
     @PostMapping("/boosts/{id}/verify-payment")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_FINANCE')")
     public String verifyPayment(@PathVariable UUID id, @RequestParam(required = false) BigDecimal paidAmount,
                                 @RequestParam(required = false) String note, RedirectAttributes ra) {
         run(ra, () -> "Payment verified — boost is now " + boostService.verifyPayment(id, paidAmount, note).status() + ".");
@@ -93,7 +97,7 @@ public class AdminPromotionController {
     }
 
     @PostMapping("/boosts/{id}/reject-payment")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_FINANCE')")
     public String rejectPayment(@PathVariable UUID id, @RequestParam(required = false) String reason, RedirectAttributes ra) {
         run(ra, () -> {
             boostService.rejectPayment(id, reason);
@@ -125,6 +129,7 @@ public class AdminPromotionController {
     // -----------------------------------------------------------------
 
     @GetMapping("/boosts")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_MODERATOR','PERM_FINANCE')")
     public String boosts(@RequestParam(required = false) String status, Model model) {
         EnumSet<BoostStatus> statuses = status == null || status.isBlank()
                 ? EnumSet.of(BoostStatus.ACTIVE, BoostStatus.PAUSED)
@@ -137,8 +142,14 @@ public class AdminPromotionController {
     }
 
     @PostMapping("/boosts/{id}/action")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_MODERATOR','PERM_FINANCE')")
     public String boostAction(@PathVariable UUID id, @RequestParam String action, @RequestParam(required = false) String reason,
                               RedirectAttributes ra) {
+        // V67: refunds are FINANCE (checked in BoostService); pause/resume/end stay ADMIN + MODERATOR.
+        if (!"refund".equals(action) && !CurrentUser.hasRole("ADMIN") && !CurrentUser.hasRole("MODERATOR")) {
+            ra.addFlashAttribute("errorMessage", "Only moderators can pause, resume or end a boost.");
+            return "redirect:/admin/promotions/boosts";
+        }
         run(ra, () -> switch (action) {
             case "pause" -> "Paused: " + boostService.adminPause(id, true, reason).status();
             case "resume" -> "Resumed: " + boostService.adminPause(id, false, reason).status();
@@ -325,11 +336,11 @@ public class AdminPromotionController {
     }
 
     // -----------------------------------------------------------------
-    // Revenue (ADMIN)
+    // Revenue (SUPER_ADMIN, FINANCE)
     // -----------------------------------------------------------------
 
     @GetMapping("/revenue")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','PERM_FINANCE')")
     public String revenue(@RequestParam(defaultValue = "30") int days, Model model) {
         List<PromoAdminService.RevenueRow> rows = adminService.revenue(days);
         Map<String, BigDecimal> byPackage = new TreeMap<>();
