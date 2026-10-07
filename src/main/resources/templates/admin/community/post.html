@@ -104,8 +104,8 @@
                     <div class="col-md-4">
                         <label class="form-label small">Remove all comments on this post by</label>
                         <select name="userId" class="form-select form-select-sm" required>
-                            <option th:each="uid : ${commenterIds}" th:if="${users[uid] != null}"
-                                    th:value="${uid}" th:text="${'u/' + users[uid].communityUsername}">u/x</option>
+                            <option th:each="uid : ${commenterIds}" th:if="${users.get(uid) != null}"
+                                    th:value="${uid}" th:text="${'u/' + users.get(uid).communityUsername}">u/x</option>
                         </select>
                     </div>
                     <div class="col-md-5">

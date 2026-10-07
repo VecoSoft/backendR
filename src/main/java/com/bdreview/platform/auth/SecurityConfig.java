@@ -43,6 +43,11 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Error/forward dispatches only render a response for a request that was already
+                        // authorized (or failed) — never answer them with "session expired". Otherwise a
+                        // 500 on an admin page came back as a misleading JSON 401.
+                        .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD).permitAll()
+                        .requestMatchers("/error").permitAll()
                         // §6 OTP + §5 auth endpoints must be reachable before a token exists
                         .requestMatchers("/api/v1/auth/**", "/api/v1/otp/**", "/actuator/health").permitAll()
                         // caller-specific reads must NOT fall under the public wildcard below —

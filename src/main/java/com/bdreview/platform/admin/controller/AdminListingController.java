@@ -125,8 +125,12 @@ public class AdminListingController {
         model.addAttribute("results", results);
         model.addAttribute("businesses", businessesById(results.getContent().stream()
                 .map(BusinessPendingChange::getBusinessId).collect(Collectors.toSet())));
-        model.addAttribute("labels", referenceLabels(results.getContent()));
-        model.addAttribute("fields", ProtectedEditService.FIELDS);
+        Map<String, String> labels = referenceLabels(results.getContent());
+        Map<UUID, List<FieldDiff>> diffs = new HashMap<>();
+        for (BusinessPendingChange c : results.getContent()) {
+            diffs.put(c.getId(), diff(c, labels));
+        }
+        model.addAttribute("diffs", diffs);
         model.addAttribute("status", status == null ? BusinessPendingChange.Status.PENDING : status);
         model.addAttribute("statuses", BusinessPendingChange.Status.values());
         model.addAttribute("active", "pending-changes");
@@ -202,11 +206,42 @@ public class AdminListingController {
         return businessRepository.findAllById(ids).stream().collect(Collectors.toMap(Business::getId, Function.identity()));
     }
 
+    /** One row of a pending-change diff, already null-safe for the template. */
+    public record FieldDiff(String field, String before, String after, boolean changed) {
+    }
+
+    private static final Map<String, String> FIELD_LABELS = Map.of(
+            "name", "Name", "contactNumber", "Phone", "categoryId", "Category", "cityId", "City",
+            "areaId", "Area", "latitude", "Latitude", "longitude", "Longitude");
+
+    /** Field-by-field before/after (ids shown as names, missing values as "—"). */
+    static List<FieldDiff> diff(BusinessPendingChange c, Map<String, String> labels) {
+        Map<String, Object> before = c.getBeforeJson() == null ? Map.of() : c.getBeforeJson();
+        Map<String, Object> after = c.getAfterJson() == null ? Map.of() : c.getAfterJson();
+        List<FieldDiff> rows = new ArrayList<>();
+        for (String field : ProtectedEditService.FIELDS) {
+            String b = before.get(field) == null ? null : before.get(field).toString();
+            String a = after.get(field) == null ? null : after.get(field).toString();
+            rows.add(new FieldDiff(FIELD_LABELS.getOrDefault(field, field), display(b, labels), display(a, labels), !Objects.equals(b, a)));
+        }
+        return rows;
+    }
+
+    private static String display(String value, Map<String, String> labels) {
+        if (value == null || value.isBlank()) {
+            return "—";
+        }
+        return labels.getOrDefault(value, value);
+    }
+
     /** id → display name for the category/city/area ids inside pending-change diffs. */
     private Map<String, String> referenceLabels(List<BusinessPendingChange> changes) {
         Set<UUID> ids = new HashSet<>();
         for (BusinessPendingChange c : changes) {
-            for (Map<String, Object> m : List.of(c.getBeforeJson(), c.getAfterJson())) {
+            for (Map<String, Object> m : Arrays.asList(c.getBeforeJson(), c.getAfterJson())) {
+                if (m == null) {
+                    continue;
+                }
                 for (String key : List.of("categoryId", "cityId", "areaId")) {
                     Object v = m.get(key);
                     if (v != null) {

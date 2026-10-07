@@ -335,21 +335,35 @@ class AdminPhase3IntegrationTest {
 
     @Test
     void contentPageSaveIsVersionedAndPublic() throws Exception {
-        mvc.perform(post("/admin/content/terms/en").with(as(superAdmin)).with(csrf())
-                .param("title", "Terms of use").param("bodyMd", "## Rules\nBe kind. " + suffix()).param("reason", "First version"));
-        mvc.perform(post("/admin/content/terms/en").with(as(superAdmin)).with(csrf())
-                .param("title", "Terms of use").param("bodyMd", "## Rules\nBe kind and honest.").param("reason", "Clarify"));
-        JsonNode page = json(call(HttpMethod.GET, "/api/v1/content/terms?lang=en", null, null));
+        mvc.perform(post("/admin/content/help/en").with(as(superAdmin)).with(csrf())
+                .param("title", "Help").param("bodyMd", "## Rules\nBe kind. " + suffix()).param("reason", "First version"));
+        mvc.perform(post("/admin/content/help/en").with(as(superAdmin)).with(csrf())
+                .param("title", "Help").param("bodyMd", "## Rules\nBe kind and honest.").param("reason", "Clarify"));
+        JsonNode page = json(call(HttpMethod.GET, "/api/v1/content/help?lang=en", null, null));
         assertThat(page.get("bodyMd").asText()).contains("honest");
         assertThat(page.get("version").asInt()).isGreaterThanOrEqualTo(2);
         assertThat(page.get("updatedAt").isNull()).isFalse();
-        assertThat(count("SELECT count(*) FROM content_page_version WHERE slug = 'terms' AND locale = 'en'")).isGreaterThanOrEqualTo(2);
-        UUID v1 = jdbc.queryForObject("SELECT id FROM content_page_version WHERE slug = 'terms' AND locale = 'en' ORDER BY version DESC LIMIT 1", UUID.class);
-        for (String url : List.of("/admin/content", "/admin/content/terms/en", "/admin/content/terms/en?version=" + v1, "/admin/content/faq/bn")) {
+        assertThat(count("SELECT count(*) FROM content_page_version WHERE slug = 'help' AND locale = 'en'")).isGreaterThanOrEqualTo(2);
+        UUID v1 = jdbc.queryForObject("SELECT id FROM content_page_version WHERE slug = 'help' AND locale = 'en' ORDER BY version DESC LIMIT 1", UUID.class);
+        for (String url : List.of("/admin/content", "/admin/content/help/en", "/admin/content/help/en?version=" + v1, "/admin/content/faq/bn")) {
             assertThat(mvc.perform(get(url).with(as(superAdmin))).andReturn().getResponse().getStatus()).as(url).isEqualTo(200);
         }
         // Bangla falls back to the written English page.
-        assertThat(json(call(HttpMethod.GET, "/api/v1/content/terms?lang=bn", null, null)).get("bodyMd").asText()).contains("honest");
+        assertThat(json(call(HttpMethod.GET, "/api/v1/content/help?lang=bn", null, null)).get("bodyMd").asText()).contains("honest");
+
+        // V68 seeded FAQ / Terms / Privacy in both languages, with the topic headings the app links to.
+        JsonNode faqEn = json(call(HttpMethod.GET, "/api/v1/content/faq?lang=en", null, null));
+        assertThat(faqEn.get("builtIn").asBoolean()).isFalse();
+        assertThat(faqEn.get("bodyMd").asText()).startsWith("## Account").contains("## Orders", "## Bookings", "## Listings",
+                "## Reviews", "## Payments");
+        assertThat(json(call(HttpMethod.GET, "/api/v1/content/faq?lang=bn", null, null)).get("bodyMd").asText())
+                .contains("## অ্যাকাউন্ট", "## পেমেন্ট");
+        for (String slug : List.of("terms", "privacy")) {
+            JsonNode bn = json(call(HttpMethod.GET, "/api/v1/content/" + slug + "?lang=bn", null, null));
+            assertThat(bn.get("locale").asText()).as(slug).isEqualTo("bn");
+            assertThat(bn.get("builtIn").asBoolean()).as(slug).isFalse();
+        }
+        assertThat(count("SELECT count(*) FROM content_page_version WHERE slug = 'faq' AND version = 1")).isEqualTo(2);
     }
 
     @Test

@@ -22,7 +22,7 @@
         <li class="nav-item" th:each="c : ${checks}">
             <a class="nav-link" th:classappend="${c == check} ? 'active'" th:href="@{/admin/data-checks(check=${c})}">
                 <span th:text="${c.label()}">Check</span>
-                <span class="badge rounded-pill" th:classappend="${counts[c] > 0} ? 'text-bg-warning' : 'text-bg-light border'" th:text="${counts[c]}">0</span>
+                <span class="badge rounded-pill" th:classappend="${counts.get(c) > 0} ? 'text-bg-warning' : 'text-bg-light border'" th:text="${counts.get(c)}">0</span>
             </a>
         </li>
     </ul>

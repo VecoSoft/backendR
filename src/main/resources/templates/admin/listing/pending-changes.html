@@ -29,23 +29,22 @@
 
     <div th:if="${results.content.isEmpty()}" class="admin-card text-muted text-center">Nothing here.</div>
 
-    <div class="admin-card" th:each="c : ${results.content}" th:with="b=${businesses[c.businessId]}">
+    <div class="admin-card" th:each="c : ${results.content}" th:with="b=${businesses.get(c.businessId)}">
         <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
                 <a th:if="${b != null}" class="fw-semibold" th:href="@{/admin/businesses/{id}(id=${b.id})}" th:text="${b.name}">Biz</a>
-                <div class="small text-muted" th:text="'Requested ' + ${@fmt.dt(c.createdAt)}">requested</div>
+                <span th:if="${b == null}" class="fw-semibold text-muted">Listing removed</span>
+                <div class="small text-muted" th:text="'Requested ' + ${c.createdAt != null ? @fmt.dt(c.createdAt) : '—'}">requested</div>
             </div>
             <span class="badge text-bg-secondary" th:text="${c.status}">PENDING</span>
         </div>
         <table class="admin-table mb-2">
             <thead><tr><th style="width:20%;">Field</th><th>Now (public)</th><th>Requested</th></tr></thead>
             <tbody>
-            <tr th:each="field : ${fields}"
-                th:with="before=${c.beforeJson[field]}, after=${c.afterJson[field]}"
-                th:classappend="${before?.toString() != after?.toString()} ? 'diff-changed'">
-                <td class="small fw-semibold" th:text="${field}">name</td>
-                <td class="small" th:text="${labels[before?.toString()] ?: before}">before</td>
-                <td class="small" th:text="${labels[after?.toString()] ?: after}">after</td>
+            <tr th:each="d : ${diffs.get(c.id)}" th:classappend="${d.changed()} ? 'diff-changed'">
+                <td class="small fw-semibold" th:text="${d.field()}">Name</td>
+                <td class="small" th:text="${d.before()}">before</td>
+                <td class="small" th:text="${d.after()}">after</td>
             </tr>
             </tbody>
         </table>

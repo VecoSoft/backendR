@@ -92,7 +92,7 @@
                                           th:text="${#strings.listJoin(s.excludedBusinessIds, ', ')}"></textarea>
                                 <div class="small text-muted" th:if="${!s.excludedBusinessIds.isEmpty()}">
                                     Currently: <span th:each="id, st : ${s.excludedBusinessIds}"
-                                                     th:text="${(names[id] ?: id) + (st.last ? '' : ', ')}">name</span>
+                                                     th:text="${(names.get(id) ?: id) + (st.last ? '' : ', ')}">name</span>
                                 </div>
                             </div>
                             <div class="col-12">
