@@ -1,5 +1,7 @@
 package com.bdreview.platform.commerce;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.catalog.ServiceOffering;
 import com.bdreview.platform.catalog.ServiceOfferingRepository;
@@ -415,6 +417,7 @@ public class BookingService {
      */
     @Transactional
     @Scheduled(fixedRate = 15, timeUnit = TimeUnit.MINUTES)
+    @SchedulerLock(name = "booking-auto-close", lockAtMostFor = "PT10M")
     public void autoExpirePastBookings() {
         tracked("booking-auto-close", () -> {
             LocalDateTime cutoff = LocalDateTime.now().minusMinutes(commerceConfig().getBookingNoShowGraceMinutes());

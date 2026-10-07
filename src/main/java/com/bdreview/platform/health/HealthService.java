@@ -52,6 +52,7 @@ public class HealthService {
     private final WebClient mlClient;
     private final SmsGatewayService sms;
     private final Path storageRoot;
+    private final ObjectProvider<com.bdreview.platform.gallery.ObjectStorageClient> storageClient;
     private final JobRunRecorder jobRuns;
     private final AuditLogService auditLogService;
     private final List<Job> jobs;
@@ -62,7 +63,9 @@ public class HealthService {
                          ObjectProvider<OrderService> orders, ObjectProvider<BookingService> bookings,
                          ObjectProvider<CommunityRestrictionExpiryJob> restrictions, ObjectProvider<PromoExpiryJob> promo,
                          ObjectProvider<BroadcastService> broadcasts, ObjectProvider<DataRetentionJob> retention,
-                         @Value("${retention.cron}") String retentionCron) {
+                         @Value("${retention.cron}") String retentionCron,
+                         ObjectProvider<com.bdreview.platform.gallery.ObjectStorageClient> storageClient) {
+        this.storageClient = storageClient;
         this.jdbc = jdbc;
         this.redis = redis;
         this.mlClient = mlServiceWebClient;
@@ -139,6 +142,14 @@ public class HealthService {
 
     private Check storage() {
         long t0 = System.nanoTime();
+        var client = storageClient.getIfAvailable();
+        if (client != null && !(client instanceof com.bdreview.platform.gallery.DevObjectStorageClient)) {
+            try {
+                return new Check("File storage", "UP", null, client.probe(), Instant.now());
+            } catch (RuntimeException e) {
+                return new Check("File storage", "DOWN", ms(t0), rootMessage(e), Instant.now());
+            }
+        }
         try {
             Files.createDirectories(storageRoot);
             FileStore store = Files.getFileStore(storageRoot);

@@ -13,16 +13,14 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HexFormat;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
  * Short-lived counters for promotion serving (V58): the per-viewer daily frequency cap and the
  * 30-minute impression dedupe. Keyed by a session hash — SHA-256 of the client's random
  * per-browser id plus the day — so nothing identifies a person, and the hash can't be linked
- * across days. Redis when available (shared by every instance); an in-memory fallback otherwise,
- * so serving never breaks because Redis is down.
+ * across days. Kept in Redis only (shared by every instance); while Redis is down serving goes on
+ * without caps or dedupe, so it never breaks and no instance keeps its own counts.
  */
 @Component
 public class PromoCounters {
@@ -33,7 +31,6 @@ public class PromoCounters {
     private static final Duration REDIS_BACKOFF = Duration.ofSeconds(60);
 
     private final ObjectProvider<StringRedisTemplate> redisProvider;
-    private final Map<String, long[]> memory = new ConcurrentHashMap<>();
     private volatile long redisDisabledUntil;
 
     public PromoCounters(ObjectProvider<StringRedisTemplate> redisProvider) {
@@ -78,8 +75,7 @@ public class PromoCounters {
                 redisFailed(e);
             }
         }
-        long[] entry = memory.get(key);
-        return entry == null || entry[1] < System.currentTimeMillis() ? 0 : entry[0];
+        return 0; // Redis down: no frequency cap rather than a per-instance one
     }
 
     private long increment(String key, Duration ttl) {
@@ -95,12 +91,7 @@ public class PromoCounters {
                 redisFailed(e);
             }
         }
-        long now = System.currentTimeMillis();
-        if (memory.size() > 200_000) {
-            memory.entrySet().removeIf(en -> en.getValue()[1] < now);
-        }
-        long[] entry = memory.compute(key, (k, v) -> v == null || v[1] < now ? new long[]{1, now + ttl.toMillis()} : new long[]{v[0] + 1, v[1]});
-        return entry[0];
+        return 1; // Redis down: count it (no dedupe) rather than keep per-instance state
     }
 
     private StringRedisTemplate redis() {
@@ -109,7 +100,7 @@ public class PromoCounters {
 
     private void redisFailed(Exception e) {
         if (System.currentTimeMillis() >= redisDisabledUntil) {
-            log.warn("Redis unavailable for promotion counters ({}); using in-memory counters for {}s",
+            log.warn("Redis unavailable for promotion counters ({}); serving without frequency caps for {}s",
                     e.getMessage(), REDIS_BACKOFF.toSeconds());
         }
         redisDisabledUntil = System.currentTimeMillis() + REDIS_BACKOFF.toMillis();

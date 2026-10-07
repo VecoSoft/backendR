@@ -2,12 +2,23 @@ spring:
   application:
     name: business-review-platform
 
+  # Boot's own session auto-config is off: AdminSessionConfig turns on Redis-backed sessions when
+  # SESSION_STORE=redis (production), otherwise Tomcat keeps them in memory (local dev).
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.session.SessionAutoConfiguration
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:bd_review}?sslmode=${DB_SSLMODE:disable}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:1234}
     hikari:
-      maximum-pool-size: 20
+      # Managed Postgres allows ~22 connections on the smallest plan; keep instances x pool under it.
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 10000
+      # Below the managed DB's idle-connection cutoff, so Hikari retires connections first.
+      max-lifetime: 1500000
+      keepalive-time: 300000
 
   jpa:
     hibernate:
@@ -33,12 +44,58 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
+  lifecycle:
+    # Graceful shutdown: in-flight requests get this long to finish after SIGTERM.
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
 
 server:
   port: ${PORT:8085}
+  shutdown: graceful
+  # Behind Caddy: trust X-Forwarded-For/-Proto from private-network proxies only (Tomcat RemoteIpValve),
+  # so request.getRemoteAddr() is the real client IP and redirects stay https.
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:native}
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        # Admin panel session cookie (the app API itself is bearer-token, no cookies).
+        # Blank domain = host-only cookie for the API host (api.jachai.com), the safest choice.
+        domain: ${COOKIE_DOMAIN:}
+        same-site: ${COOKIE_SAME_SITE:lax}
+        secure: ${COOKIE_SECURE:false}
+        http-only: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        # Liveness: the JVM is up (Docker healthcheck / restarts). Readiness: also DB + Redis reachable.
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,redis
 
 # --- Domain-specific config (Part A of spec) ---
 app:
+  # APP_ENV=production turns on the start-up check (ProductionEnvironmentCheck): the app refuses to
+  # start while any production setting is missing or still a development default.
+  env: ${APP_ENV:development}
+  session:
+    # redis: admin sessions shared by all instances (required in production); memory: Tomcat (dev).
+    store: ${SESSION_STORE:memory}
+  scheduling:
+    # false for one-off containers (media migration) so they don't run the scheduled jobs.
+    enabled: ${APP_SCHEDULING_ENABLED:true}
   cors:
     # Comma-separated list of origins allowed to call this API from a browser.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
@@ -63,13 +120,25 @@ app:
     max-size-mb: 5
     allowed-types: image/jpeg,image/png,image/webp
   storage:
-    # Object storage (spec §13). "local" keeps files on disk under local-dir; "s3" keeps them
-    # in a private S3-compatible bucket (DigitalOcean Spaces). Either way, upload and file URLs
-    # point at this API (base-url + /api/v1/storage/...), which applies the access rules.
-    driver: ${STORAGE_DRIVER:local}
+    # Object storage (spec §13). STORAGE_MODE=local keeps files on disk under local-dir (dev only);
+    # s3 keeps them in a private S3-compatible bucket (DigitalOcean Spaces) — required in production.
+    # Upload and file URLs always point at this API (base-url + /api/v1/storage/...), which applies
+    # the access rules (moderation, admin-only documents) before anything is served.
+    mode: ${STORAGE_MODE:${STORAGE_DRIVER:local}}
     local-dir: ${STORAGE_LOCAL_DIR:./uploads}
     # Public URL of this API, used to build upload/file URLs.
     base-url: ${STORAGE_BASE_URL:http://localhost:${server.port}}
+    # Upload URLs are signed (HMAC over key + expiry) and valid this long.
+    upload-url-ttl-minutes: ${STORAGE_UPLOAD_URL_TTL_MINUTES:15}
+    # s3 mode: "redirect" answers an allowed GET with a 302 to a short-lived presigned bucket URL
+    # (bytes never pass through the API); "proxy" streams the bytes through the API instead.
+    serve: ${STORAGE_SERVE:redirect}
+    presigned-get-ttl-seconds: ${STORAGE_PRESIGNED_GET_TTL_SECONDS:300}
+    # WebP variants generated after each image upload; GET .../files/{key}?w=600 serves one.
+    variants:
+      enabled: ${STORAGE_VARIANTS_ENABLED:true}
+      widths: 200,600,1200
+      quality: 0.8
     s3:
       # Spaces: https://<region>.digitaloceanspaces.com, region e.g. sgp1.
       endpoint: ${SPACES_ENDPOINT:https://sgp1.digitaloceanspaces.com}
@@ -79,6 +148,13 @@ app:
       secret-key: ${SPACES_SECRET:}
       # Optional folder inside the bucket, e.g. "prod", so several environments can share one bucket.
       key-prefix: ${SPACES_KEY_PREFIX:}
+      # Path-style URLs (endpoint/bucket/key) for S3 servers without per-bucket hostnames (e.g. MinIO); Spaces needs neither.
+      path-style: ${SPACES_PATH_STYLE:false}
+    # One-off media migration (StorageMigrationRunner): copy files from this local folder into the
+    # bucket, generate missing variants, rewrite stored URLs from rewrite-from to base-url, then exit.
+    migrate:
+      source: ${STORAGE_MIGRATE_SOURCE:}
+      rewrite-urls-from: ${STORAGE_MIGRATE_REWRITE_FROM:}
   pagination:
     default-page-size: 20
     max-page-size: 30

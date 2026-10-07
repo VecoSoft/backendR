@@ -9,3 +9,4 @@ target/
 Thumbs.db
 /uploads/
 deploy/.env
+deploy/.last-deploy

@@ -25,6 +25,10 @@ An admin can override any period on **System health → Data retention** (stored
 section `RETENTION`; a reason is required and the change is audited). A blank field goes back to
 the env default. `RETENTION_ENABLED=false` turns the job off.
 
+On the droplet, `deploy/docker-compose.prod.yml` passes only `RETENTION_ENABLED` through, so the
+periods are the defaults above unless an admin changes them in the panel. To set a period by
+environment instead, add the variable to the backend's `environment:` list there.
+
 Details:
 
 - **Notifications:** age is measured from `created_at`. A notification is "read" when its status is
@@ -51,7 +55,7 @@ V69 adds `created_at` indexes on `notification` and `user_login_event`, a `start
 
 ## Vacuum
 
-Autovacuum is on (managed Postgres, and the default in the Docker image). It reclaims the space
+Autovacuum is on (DigitalOcean Managed PostgreSQL runs it by default). It reclaims the space
 freed by these deletes and keeps planner statistics current, so no manual step is required.
 
 As a weekly safety net, run `VACUUM (ANALYZE)` on the tables this job deletes from. Do it in quiet
@@ -62,11 +66,16 @@ VACUUM (ANALYZE) notification, search_log, search_log_daily, user_login_event,
     scheduled_job_run, audit_log, community_post, community_post_comment;
 ```
 
-On the Docker deployment:
+On the droplet (managed Postgres; credentials come from `deploy/.env`):
 
 ```bash
-docker compose -f docker-compose.prod.yml exec postgres \
-  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "VACUUM (ANALYZE) notification, search_log, search_log_daily, user_login_event, scheduled_job_run, audit_log, community_post, community_post_comment;"
+/opt/jachai/backendR/deploy/psql.sh -c "VACUUM (ANALYZE) notification, search_log, search_log_daily, user_login_event, scheduled_job_run, audit_log, community_post, community_post_comment;"
+```
+
+As a weekly cron entry for the `deploy` user (Sunday 04:30 Dhaka = Saturday 22:30 UTC):
+
+```
+30 22 * * 6 /opt/jachai/backendR/deploy/psql.sh -c "VACUUM (ANALYZE) notification, search_log, search_log_daily, user_login_event, scheduled_job_run, audit_log, community_post, community_post_comment;" >> /home/deploy/jachai-vacuum.log 2>&1
 ```
 
 Plain `VACUUM` does not lock out reads or writes. It also does not shrink files on disk: the freed

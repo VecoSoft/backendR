@@ -1,5 +1,7 @@
 package com.bdreview.platform.promo;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+
 import com.bdreview.platform.community.CommunityContentStatus;
 import com.bdreview.platform.community.CommunityPostRepository;
 import com.bdreview.platform.promo.PromoEnums.BusinessPostStatus;
@@ -60,6 +62,7 @@ public class PromoExpiryJob {
     }
 
     @Scheduled(fixedRate = 2, timeUnit = TimeUnit.MINUTES, initialDelay = 1)
+    @SchedulerLock(name = "promo-expiry", lockAtMostFor = "PT5M")
     public void run() {
         tracked("promo-expiry", () -> {
             try {

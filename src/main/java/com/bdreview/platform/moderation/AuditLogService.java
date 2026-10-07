@@ -118,8 +118,8 @@ public class AuditLogService {
             return null;
         }
         HttpServletRequest request = attrs.getRequest();
-        String forwarded = request.getHeader("X-Forwarded-For");
-        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
+        // Real client IP via Tomcat's RemoteIpValve (X-Forwarded-For trusted only from Caddy).
+        String ip = request.getRemoteAddr();
         return ip != null && ip.length() > 64 ? ip.substring(0, 64) : ip;
     }
 }

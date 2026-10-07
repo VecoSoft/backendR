@@ -5,6 +5,7 @@ import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.common.ForbiddenException;
 import com.bdreview.platform.common.RateLimitExceededException;
+import com.bdreview.platform.common.RedisRateLimiter;
 import com.bdreview.platform.community.CommunityContentStatus;
 import com.bdreview.platform.community.CommunityPostCommentRepository;
 import com.bdreview.platform.community.CommunityPostRepository;
@@ -23,7 +24,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,8 +64,12 @@ public class CommunityPolicyService {
     private final CommunityPostCommentRepository commentRepository;
     private final ReportRepository reportRepository;
 
-    /** Sliding one-minute vote window per user (votes can be toggled, so row counts would under-count). */
-    private final Map<UUID, Deque<Long>> voteWindows = new ConcurrentHashMap<>();
+    /**
+     * One-minute vote counter per user, in Redis so it holds across API instances (votes can be
+     * toggled, so row counts would under-count). Setter-injected so unit tests can construct the
+     * service without it; without a limiter, votes are not limited.
+     */
+    private RedisRateLimiter voteLimiter;
     private volatile BannedWordMatcher bannedWordMatcher = new BannedWordMatcher(List.of());
 
     public CommunityPolicyService(CommunitySettingsService settingsService,
@@ -191,20 +195,13 @@ public class CommunityPolicyService {
         }
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setVoteLimiter(RedisRateLimiter voteLimiter) {
+        this.voteLimiter = voteLimiter;
+    }
+
     private boolean tryVote(UUID userId, int perMinute) {
-        long now = System.currentTimeMillis();
-        long cutoff = now - Duration.ofMinutes(1).toMillis();
-        Deque<Long> window = voteWindows.computeIfAbsent(userId, k -> new ArrayDeque<>());
-        synchronized (window) {
-            while (!window.isEmpty() && window.peekFirst() < cutoff) {
-                window.pollFirst();
-            }
-            if (window.size() >= perMinute) {
-                return false;
-            }
-            window.addLast(now);
-            return true;
-        }
+        return voteLimiter == null || voteLimiter.tryAcquire("community-vote:" + userId, perMinute, Duration.ofMinutes(1));
     }
 
     // -----------------------------------------------------------------

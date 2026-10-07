@@ -87,8 +87,11 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/v1/storage/files/nid/**", "/api/v1/storage/files/claim-document/**").hasRole("ADMIN")
                         // pre-signed upload URLs (§13) are bare fetch() PUTs with no Authorization
-                        // header — the URL itself (unguessable object key) is the auth boundary
+                        // header — the URL's HMAC signature + expiry (StorageUrlSigner) is the auth
+                        // boundary; file GETs apply their own moderation checks (StorageController)
                         .requestMatchers("/api/v1/storage/**").permitAll()
+                        // Liveness/readiness probes (Docker healthcheck, load balancers). Status only, no details.
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // V56: every /api/v1/admin/** endpoint needs a staff role at the URL level;
                         // controllers narrow it further with @PreAuthorize (settings/roles/reveal = ADMIN).
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "MODERATOR")

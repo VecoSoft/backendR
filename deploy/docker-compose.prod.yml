@@ -1,132 +1,129 @@
-# Production stack for one droplet: Caddy (HTTPS) -> Next.js frontend + Spring Boot API,
-# plus the ML service, PostGIS and Redis on a private network. Only Caddy publishes ports.
+# Production stack on the droplet "jachai-prod" (4 GB RAM + 4 GB swap):
+#   caddy   — HTTPS for api.jachai.com, the only service that publishes ports (80/443)
+#   backend — Spring Boot API + admin panel (/admin)
+#   ml      — FastAPI ML service, reachable only by the backend
+#   redis   — sessions, shared caches, rate limits; reachable only inside this network
+# Postgres is DigitalOcean Managed PostgreSQL and media is DigitalOcean Spaces: no database or
+# upload state lives on this droplet, so a second API instance can be added behind a load balancer.
 #
-# The three repos are cloned side by side and images are built on the droplet:
-#   /opt/jachai/backendR   (this repo; run compose from backendR/deploy)
-#   /opt/jachai/Jachai     (frontend)
-#   /opt/jachai/rpML       (ml-service)
+# Repos live side by side under /opt/jachai:
+#   /opt/jachai/backendR   (this repo; run everything from backendR/deploy)
+#   /opt/jachai/rpML
+# Images are built here (deploy/build.sh), never pulled from a registry.
 #
-#   cp .env.example .env   # then fill it in
-#   docker compose -f docker-compose.prod.yml build   # one service at a time if RAM is tight
+#   ./build.sh                                   # one image at a time
 #   docker compose -f docker-compose.prod.yml up -d
 
 name: jachai
 
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.10-alpine
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
-      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    mem_limit: 128m
+    logging: *logging
     depends_on:
-      - frontend
-      - backend
-
-  frontend:
-    build:
-      context: ${FRONTEND_DIR:-../../Jachai}
-      args:
-        # Inlined into the browser bundle at build time: rebuild the frontend after changing it.
-        NEXT_PUBLIC_API_BASE_URL: https://${API_DOMAIN}
-    image: jachai/frontend:latest
-    restart: unless-stopped
-    mem_limit: 512m
-    depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   backend:
     build:
       context: ..
     image: jachai/backend:latest
     restart: unless-stopped
-    mem_limit: 1g
+    mem_limit: 1536m
+    # Graceful shutdown: Spring finishes in-flight requests (SHUTDOWN_TIMEOUT, 30s) before exiting.
+    stop_grace_period: 45s
+    logging: *logging
     environment:
+      APP_ENV: production
       PORT: 8085
-      # Trust X-Forwarded-* from Caddy so redirects (admin login) and URLs stay https.
+      # Trust X-Forwarded-* from Caddy (private network) only: getRemoteAddr() is the real client IP.
       SERVER_FORWARD_HEADERS_STRATEGY: native
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${POSTGRES_DB:-bd_review}
-      DB_USER: ${POSTGRES_USER:-jachai}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      DB_SSLMODE: disable
+      # Managed Postgres (SGP1). Pool x instances must stay under the plan's connection limit (22).
+      DB_HOST: ${DB_HOST:?set DB_HOST in .env}
+      DB_PORT: ${DB_PORT:-25060}
+      DB_NAME: ${DB_NAME:-jachai}
+      DB_USER: ${DB_USER:?set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_SSLMODE: ${DB_SSLMODE:-require}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      SESSION_STORE: redis
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
-      CORS_ALLOWED_ORIGINS: https://${DOMAIN},https://www.${DOMAIN}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS in .env}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+      COOKIE_SECURE: "true"
       ML_SERVICE_BASE_URL: http://ml:8081
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
-      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-true}
-      ADMIN_DEFAULT_PHONE: ${ADMIN_DEFAULT_PHONE:?set ADMIN_DEFAULT_PHONE in .env}
-      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?set ADMIN_DEFAULT_PASSWORD in .env}
-      # Storage: files live in a private Spaces bucket and are served through the API.
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-false}
+      ADMIN_DEFAULT_PHONE: ${ADMIN_DEFAULT_PHONE:-}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-}
+      # Media: private Spaces bucket, every file served through the API's access checks.
+      STORAGE_MODE: s3
       STORAGE_BASE_URL: https://${API_DOMAIN}
-      STORAGE_LOCAL_DIR: /app/uploads
+      STORAGE_SERVE: ${STORAGE_SERVE:-redirect}
       SPACES_ENDPOINT: ${SPACES_ENDPOINT:-https://sgp1.digitaloceanspaces.com}
       SPACES_REGION: ${SPACES_REGION:-sgp1}
-      SPACES_BUCKET: ${SPACES_BUCKET:-}
-      SPACES_KEY: ${SPACES_KEY:-}
-      SPACES_SECRET: ${SPACES_SECRET:-}
+      SPACES_BUCKET: ${SPACES_BUCKET:?set SPACES_BUCKET in .env}
+      SPACES_KEY: ${SPACES_KEY:?set SPACES_KEY in .env}
+      SPACES_SECRET: ${SPACES_SECRET:?set SPACES_SECRET in .env}
       SPACES_KEY_PREFIX: ${SPACES_KEY_PREFIX:-}
-      # Daily pruning of old logs and deleted content (docs/data-retention.md). Periods are
-      # editable on Admin -> System health.
       RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
-    volumes:
-      # Only used when STORAGE_DRIVER=local.
-      - uploads:/app/uploads
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       ml:
-        condition: service_started
+        condition: service_healthy
 
   ml:
     build:
       context: ${ML_DIR:-../../rpML}
     image: jachai/ml:latest
     restart: unless-stopped
-    mem_limit: 1536m
+    # Not published: only the backend reaches it, at http://ml:8081.
+    mem_limit: ${ML_MEM_LIMIT:-768m}
+    logging: *logging
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-paraphrase-multilingual-MiniLM-L12-v2}
+      # Fewer torch threads = less memory per request on a shared 2-vCPU droplet.
+      OMP_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
     volumes:
       - hf_models:/models
 
-  postgres:
-    # Migrations need PostGIS (plus pg_trgm, fuzzystrmatch, btree_gist from contrib).
-    image: postgis/postgis:16-3.4
-    restart: unless-stopped
-    mem_limit: 512m
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-bd_review}
-      POSTGRES_USER: ${POSTGRES_USER:-jachai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: unless-stopped
-    mem_limit: 128m
-    command: ["redis-server", "--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    mem_limit: 300m
+    logging: *logging
+    # Not published. AOF so admin sessions survive a restart. Every key the app writes has a TTL
+    # (sessions, caches, rate-limit windows); if 256 MB ever fills, the least recently used go first.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec",
+              "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru", "--save", ""]
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -136,6 +133,5 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-  pgdata:
-  uploads:
+  redis_data:
   hf_models:

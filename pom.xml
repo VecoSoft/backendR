@@ -111,6 +111,25 @@
             <version>${awssdk.version}</version>
         </dependency>
 
+        <!-- /actuator/health liveness + readiness probes for Docker / load balancers -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Admin panel sessions in Redis, so any API instance can serve any admin request -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+
+        <!-- WebP encoder/decoder (ImageIO plugin, bundles native libwebp) for upload variants -->
+        <dependency>
+            <groupId>com.github.usefulness</groupId>
+            <artifactId>webp-imageio</artifactId>
+            <version>0.11.0</version>
+        </dependency>
+
         <!-- At most one instance runs a guarded @Scheduled job at a time (lock row in the shedlock table, V69) -->
         <dependency>
             <groupId>net.javacrumbs.shedlock</groupId>

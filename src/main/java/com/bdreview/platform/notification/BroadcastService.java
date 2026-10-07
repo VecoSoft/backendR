@@ -1,5 +1,7 @@
 package com.bdreview.platform.notification;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.health.JobRunRecorder;
@@ -184,6 +186,7 @@ public class BroadcastService {
 
     /** Every minute: send the broadcasts whose time has come. */
     @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES, initialDelay = 1)
+    @SchedulerLock(name = "broadcast-dispatch", lockAtMostFor = "PT10M")
     public void dispatchDue() {
         jobRuns.track("broadcast-dispatch", () -> {
             for (UUID id : jdbc.queryForList("SELECT id FROM broadcast WHERE status = 'SCHEDULED' AND scheduled_at <= now()", UUID.class)) {

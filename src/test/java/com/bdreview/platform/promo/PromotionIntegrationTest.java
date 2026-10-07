@@ -42,6 +42,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class PromotionIntegrationTest {
 
     @Autowired MockMvc mvc;
+    @Autowired org.springframework.beans.factory.ObjectProvider<org.springframework.data.redis.core.StringRedisTemplate> redisTemplates;
     @Autowired UserRepository userRepository;
     @Autowired JwtService jwtService;
     @Autowired JdbcTemplate jdbc;
@@ -452,6 +453,9 @@ class PromotionIntegrationTest {
 
     @Test
     void frequencyCapLimitsTheSameBoostPerViewerPerDay() throws Exception {
+        // Frequency caps are counted in Redis only (shared by every API instance; no per-instance
+        // fallback), so this needs a reachable Redis.
+        org.junit.jupiter.api.Assumptions.assumeTrue(redisAvailable(), "Redis is not reachable");
         patchPromotionSettings(Map.of("sponsoredFeedRatio", 3, "frequencyCapPerDay", 2));
         createMemberPosts(9);
         UUID postId = createBusinessPost("GENERAL", "Frequency cap test post for sponsored slots");
@@ -579,5 +583,15 @@ class PromotionIntegrationTest {
         MvcResult live = call(HttpMethod.POST, "/api/v1/promo/businesses/" + businessId + "/posts", ownerToken, withTemplate);
         assertThat(status(live)).as(live.getResponse().getContentAsString()).isEqualTo(200);
         assertThat(json(live).get("promotion").get("status").asText()).isEqualTo("PUBLISHED");
+    }
+
+    private boolean redisAvailable() {
+        try {
+            var redis = redisTemplates.getIfAvailable();
+            return redis != null && "PONG".equalsIgnoreCase(
+                    redis.execute((org.springframework.data.redis.core.RedisCallback<String>) c -> c.ping()));
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 }

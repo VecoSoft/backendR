@@ -1,5 +1,7 @@
 package com.bdreview.platform.commerce;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+
 import com.bdreview.platform.business.Business;
 import com.bdreview.platform.catalog.MenuItem;
 import com.bdreview.platform.catalog.MenuItemRepository;
@@ -357,6 +359,7 @@ public class OrderService {
      */
     @Transactional
     @Scheduled(fixedRate = 5, timeUnit = TimeUnit.MINUTES)
+    @SchedulerLock(name = "order-auto-cancel", lockAtMostFor = "PT4M")
     public void autoExpireStalePendingOrders() {
         tracked("order-auto-cancel", () -> {
             int minutes = commerceConfig().getOrderAutoCancelMinutes();

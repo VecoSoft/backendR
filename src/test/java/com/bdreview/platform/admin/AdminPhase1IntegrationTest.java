@@ -55,6 +55,7 @@ class AdminPhase1IntegrationTest {
     private static final String FILES = "http://localhost:8085/api/v1/storage/files/";
 
     @Autowired MockMvc mvc;
+    @Autowired com.bdreview.platform.gallery.StorageUrlSigner storageUrls;
     @Autowired UserRepository userRepository;
     @Autowired JwtService jwtService;
     @Autowired JdbcTemplate jdbc;
@@ -541,7 +542,7 @@ class AdminPhase1IntegrationTest {
         String key = "nid/" + UUID.randomUUID() + "/card.jpg";
         assertThat(mvc.perform(put("/api/v1/storage/upload/" + key).content(new byte[]{1})).andReturn().getResponse().getStatus()).isEqualTo(404);
         setFlag("NID_VERIFICATION", "on");
-        assertThat(mvc.perform(put("/api/v1/storage/upload/" + key).content(new byte[]{1})).andReturn().getResponse().getStatus()).isEqualTo(200);
+        assertThat(mvc.perform(put(signedUpload(key)).content(new byte[]{1})).andReturn().getResponse().getStatus()).isEqualTo(200);
         assertThat(objectMapper.readTree(get200("/api/v1/community/settings", null)).get("features").get("nidVerificationEnabled").asBoolean()).isTrue();
     }
 
@@ -581,7 +582,7 @@ class AdminPhase1IntegrationTest {
     }
 
     private String uploadFile(String key) throws Exception {
-        int status = mvc.perform(put("/api/v1/storage/upload/" + key).content(new byte[]{(byte) 0xFF, (byte) 0xD8, 1, 2, 3}))
+        int status = mvc.perform(put(signedUpload(key)).content(new byte[]{(byte) 0xFF, (byte) 0xD8, 1, 2, 3}))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isEqualTo(200);
         return FILES + key;
@@ -662,5 +663,11 @@ class AdminPhase1IntegrationTest {
                 .communityGender(communityUsername == null ? null : "M")
                 .staffRole(staffRole)
                 .build());
+    }
+
+    /** Upload URLs must carry the API's signature (StorageUrlSigner), exactly as the app receives them. */
+    private String signedUpload(String key) {
+        String url = storageUrls.uploadUrl(key);
+        return url.substring(url.indexOf("/api/v1/storage/upload/"));
     }
 }

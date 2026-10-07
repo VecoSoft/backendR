@@ -1,5 +1,7 @@
 package com.bdreview.platform.community.moderation;
 
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+
 import com.bdreview.platform.moderation.AuditLogService;
 import com.bdreview.platform.notification.NotificationChannel;
 import com.bdreview.platform.notification.NotificationService;
@@ -55,6 +57,7 @@ public class CommunityRestrictionExpiryJob {
     }
 
     @Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
+    @SchedulerLock(name = "community-restriction-expiry", lockAtMostFor = "PT5M")
     @Transactional
     public void expireRestrictions() {
         tracked("community-restriction-expiry", () -> {

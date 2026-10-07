@@ -28,7 +28,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Platform-wide account control (V63): suspend / ban / lift, force logout, role change and the
@@ -43,10 +42,6 @@ public class AccountControlService {
     public static final ZoneId DISPLAY_ZONE = ZoneId.of("Asia/Dhaka");
     private static final DateTimeFormatter DISPLAY_FORMAT =
             DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH).withZone(DISPLAY_ZONE);
-    private static final long CACHE_TTL_MS = 5_000;
-
-    private record Cached(Optional<UserRestriction> restriction, long loadedAt) {
-    }
 
     private final UserRestrictionRepository restrictionRepository;
     private final UserLoginEventRepository loginEventRepository;
@@ -54,7 +49,6 @@ public class AccountControlService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final AuditLogService auditLogService;
     private final TransactionTemplate independentTx;
-    private final Map<UUID, Cached> cache = new ConcurrentHashMap<>();
 
     public AccountControlService(UserRestrictionRepository restrictionRepository,
                                  UserLoginEventRepository loginEventRepository,
@@ -77,17 +71,12 @@ public class AccountControlService {
     // Checks
     // -----------------------------------------------------------------
 
-    /** The restriction in force for this user right now (BAN wins over SUSPEND), briefly cached. */
+    /**
+     * The restriction in force for this user right now (BAN wins over SUSPEND). Read from the
+     * database every time (one indexed lookup) so a ban applies on every API instance at once.
+     */
     public Optional<UserRestriction> inEffect(UUID userId) {
-        Cached cached = cache.get(userId);
-        long now = System.currentTimeMillis();
-        if (cached != null && now - cached.loadedAt() < CACHE_TTL_MS
-                && cached.restriction().map(r -> r.isInEffect(Instant.now())).orElse(true)) {
-            return cached.restriction();
-        }
-        Optional<UserRestriction> fresh = restrictionRepository.findInEffect(userId, Instant.now()).stream().findFirst();
-        cache.put(userId, new Cached(fresh, now));
-        return fresh;
+        return restrictionRepository.findInEffect(userId, Instant.now()).stream().findFirst();
     }
 
     /** Throws {@link AccountRestrictedException} (403, with reason + end date) while the account is suspended/banned. */
@@ -147,7 +136,6 @@ public class AccountControlService {
                 .createdBy(CurrentUser.id())
                 .build());
         refreshTokenRepository.revokeAllForUser(user.getId());
-        cache.remove(user.getId());
         auditLogService.record("USER", user.getId(), type == UserRestriction.Type.BAN ? "USER_BANNED" : "USER_SUSPENDED",
                 reason, before, standing(user.getId()));
         return saved;
@@ -171,7 +159,6 @@ public class AccountControlService {
             r.setLiftReason(why);
         }
         restrictionRepository.saveAll(active);
-        cache.remove(user.getId());
         auditLogService.record("USER", user.getId(), "USER_RESTRICTION_LIFTED", why, before, standing(user.getId()));
         return active.size();
     }
@@ -247,8 +234,9 @@ public class AccountControlService {
         String agent = null;
         if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
             HttpServletRequest request = attrs.getRequest();
-            String forwarded = request.getHeader("X-Forwarded-For");
-            ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
+            // The real client IP: Tomcat's RemoteIpValve applies X-Forwarded-For only when it comes from
+            // the trusted proxy (Caddy), so a client can't spoof it by sending the header itself.
+            ip = request.getRemoteAddr();
             agent = request.getHeader("User-Agent");
         }
         UserLoginEvent event = UserLoginEvent.builder()

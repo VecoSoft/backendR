@@ -4,6 +4,7 @@ import com.bdreview.platform.auth.User;
 import com.bdreview.platform.auth.UserRepository;
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
+import com.bdreview.platform.common.SharedCache;
 import com.bdreview.platform.moderation.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,7 +26,10 @@ public class NotificationTemplateService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationTemplateService.class);
     private static final Pattern VAR = Pattern.compile("\\{([a-zA-Z]+)}");
-    private static final long TTL_MS = 5_000;
+    private static final java.time.Duration TTL = java.time.Duration.ofSeconds(60);
+    private static final String CACHE_KEY = "notification_templates";
+    private static final com.fasterxml.jackson.core.type.TypeReference<Map<String, Text>> ROWS_TYPE = new com.fasterxml.jackson.core.type.TypeReference<>() {
+    };
 
     /** Every editable message, its variables and its built-in texts. */
     public enum Key {
@@ -91,17 +94,18 @@ public class NotificationTemplateService {
     public record View(Key key, Text en, Text bn, boolean enCustom, boolean bnCustom) {
     }
 
-    private record Cached(Map<String, Text> rows, long at) {
-    }
-
     private final JdbcTemplate jdbc;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
-    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+    private final SharedCache cache;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public NotificationTemplateService(JdbcTemplate jdbc, NotificationService notificationService,
-                                       UserRepository userRepository, AuditLogService auditLogService) {
+                                       UserRepository userRepository, AuditLogService auditLogService,
+                                       SharedCache cache, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+        this.cache = cache;
+        this.objectMapper = objectMapper;
         this.jdbc = jdbc;
         this.notificationService = notificationService;
         this.userRepository = userRepository;
@@ -195,7 +199,7 @@ public class NotificationTemplateService {
                 ON CONFLICT (template_key, locale) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body,
                     updated_by = EXCLUDED.updated_by, updated_at = now()
                 """, key.name(), loc, title.trim(), body.trim(), CurrentUser.idOrNull());
-        cache.clear();
+        cache.evictAfterCommit(CACHE_KEY);
         auditLogService.record("NOTIFICATION_TEMPLATE", null, "TEMPLATE_" + key.name() + "_" + loc.toUpperCase(), reason.trim(),
                 Map.of("title", before.title(), "body", before.body()), Map.of("title", title.trim(), "body", body.trim()));
     }
@@ -208,7 +212,7 @@ public class NotificationTemplateService {
         String loc = "bn".equals(locale) ? "bn" : "en";
         Text before = text(key, loc);
         jdbc.update("DELETE FROM notification_template WHERE template_key = ? AND locale = ?", key.name(), loc);
-        cache.clear();
+        cache.evictAfterCommit(CACHE_KEY);
         Text after = key.defaults(loc);
         auditLogService.record("NOTIFICATION_TEMPLATE", null, "TEMPLATE_" + key.name() + "_" + loc.toUpperCase() + "_RESET",
                 reason.trim(), Map.of("title", before.title(), "body", before.body()), Map.of("title", after.title(), "body", after.body()));
@@ -216,17 +220,24 @@ public class NotificationTemplateService {
 
     // ----------------------------------------------------------------
 
+    /** Admin-customised templates, cached in Redis (shared by every instance) and evicted on save. */
     private Map<String, Text> rows() {
-        Cached c = cache.get("all");
-        if (c != null && System.currentTimeMillis() - c.at() < TTL_MS) {
-            return c.rows();
-        }
-        Map<String, Text> rows = new HashMap<>();
-        jdbc.query("SELECT template_key, locale, title, body FROM notification_template", rs -> {
-            rows.put(rs.getString("template_key") + "|" + rs.getString("locale"), new Text(rs.getString("title"), rs.getString("body")));
+        String json = cache.get(CACHE_KEY, TTL, () -> {
+            Map<String, Text> rows = new HashMap<>();
+            jdbc.query("SELECT template_key, locale, title, body FROM notification_template", rs -> {
+                rows.put(rs.getString("template_key") + "|" + rs.getString("locale"), new Text(rs.getString("title"), rs.getString("body")));
+            });
+            try {
+                return objectMapper.writeValueAsString(rows);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
         });
-        cache.put("all", new Cached(rows, System.currentTimeMillis()));
-        return rows;
+        try {
+            return objectMapper.readValue(json, ROWS_TYPE);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unreadable notification template cache", e);
+        }
     }
 
     static String fill(String text, Map<String, ?> vars) {

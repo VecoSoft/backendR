@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CommunityModerationIntegrationTest {
 
     @Autowired MockMvc mvc;
+    @Autowired com.bdreview.platform.gallery.StorageUrlSigner storageUrls;
     @Autowired UserRepository userRepository;
     @Autowired JwtService jwtService;
     @Autowired JdbcTemplate jdbc;
@@ -424,12 +425,18 @@ class CommunityModerationIntegrationTest {
                 .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
                 .param("mode", "on").param("reason", "NID test"));
         String key = "nid/" + UUID.randomUUID() + "/card.jpg";
-        assertThat(mvc.perform(put("/api/v1/storage/upload/" + key).content(new byte[]{1, 2, 3}))
+        assertThat(mvc.perform(put(signedUpload(key)).content(new byte[]{1, 2, 3}))
                 .andReturn().getResponse().getStatus()).isEqualTo(200);
         assertThat(mvc.perform(get("/api/v1/storage/files/" + key).header("Authorization", "Bearer " + adminToken))
                 .andReturn().getResponse().getStatus()).isEqualTo(200);
         // ...but still never public.
         assertThat(mvc.perform(get("/api/v1/storage/files/" + key)).andReturn().getResponse().getStatus()).isIn(401, 403);
         mvc.perform(get("/api/v1/community/settings")).andExpect(jsonPath("$.features.nidVerificationEnabled").value(true));
+    }
+
+    /** Upload URLs must carry the API's signature (StorageUrlSigner), exactly as the app receives them. */
+    private String signedUpload(String key) {
+        String url = storageUrls.uploadUrl(key);
+        return url.substring(url.indexOf("/api/v1/storage/upload/"));
     }
 }

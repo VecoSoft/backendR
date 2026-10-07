@@ -11,24 +11,29 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.OptionalLong;
 import java.util.UUID;
 
 /**
- * Local-disk object storage (spec §13), the default ({@code app.storage.driver=local}).
- * Bytes are written to and read from {@code app.storage.local-dir} and served via
- * {@link StorageController}. Deployments use {@link S3ObjectStorageClient} instead.
+ * Local-disk object storage (spec §13) for development: {@code app.storage.mode=local}, the
+ * default. Bytes are written to and read from {@code app.storage.local-dir} and served via
+ * {@link StorageController}. Production uses {@link S3ObjectStorageClient}; ProductionEnvironmentCheck
+ * refuses to start a production instance in local mode.
  */
 @Component
-@ConditionalOnProperty(name = "app.storage.driver", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.storage.mode", havingValue = "local", matchIfMissing = true)
 public class DevObjectStorageClient implements ObjectStorageClient {
 
-    private final String baseUrl;
+    private final StorageUrlSigner urls;
     private final Path root;
 
-    public DevObjectStorageClient(@Value("${app.storage.base-url}") String baseUrl,
-                                   @Value("${app.storage.local-dir}") String localDir) {
-        this.baseUrl = baseUrl;
+    public DevObjectStorageClient(StorageUrlSigner urls, @Value("${app.storage.local-dir}") String localDir) {
+        this.urls = urls;
         this.root = Path.of(localDir).toAbsolutePath().normalize();
+    }
+
+    public Path root() {
+        return root;
     }
 
     @Override
@@ -39,20 +44,17 @@ public class DevObjectStorageClient implements ObjectStorageClient {
 
     @Override
     public String presignPutUrl(String objectKey) {
-        return baseUrl + "/api/v1/storage/upload/" + objectKey;
+        return urls.uploadUrl(objectKey);
     }
 
     @Override
     public String cdnUrlFor(String objectKey) {
-        return baseUrl + "/api/v1/storage/files/" + objectKey;
+        return urls.fileUrl(objectKey);
     }
 
     @Override
-    public String putObject(String objectKey, byte[] content) {
-        Path target = root.resolve(objectKey).normalize();
-        if (!target.startsWith(root)) {
-            throw new BadRequestException("Invalid object key");
-        }
+    public String putObject(String objectKey, byte[] content, String contentType) {
+        Path target = resolve(objectKey);
         try {
             Files.createDirectories(target.getParent());
             Files.write(target, content);
@@ -64,6 +66,33 @@ public class DevObjectStorageClient implements ObjectStorageClient {
 
     @Override
     public byte[] getObject(String objectKey) {
+        Path resolved = resolve(objectKey);
+        if (!Files.isRegularFile(resolved)) {
+            throw new ResourceNotFoundException("File not found");
+        }
+        try {
+            return Files.readAllBytes(resolved);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Override
+    public OptionalLong size(String objectKey) {
+        try {
+            Path resolved = resolve(objectKey);
+            return Files.isRegularFile(resolved) ? OptionalLong.of(Files.size(resolved)) : OptionalLong.empty();
+        } catch (IOException | ResourceNotFoundException e) {
+            return OptionalLong.empty();
+        }
+    }
+
+    @Override
+    public String probe() {
+        return "Local disk " + root;
+    }
+
+    private Path resolve(String objectKey) {
         String cleaned = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
         if (cleaned.isBlank()) {
             throw new BadRequestException("Missing object key");
@@ -77,13 +106,6 @@ public class DevObjectStorageClient implements ObjectStorageClient {
         if (!resolved.startsWith(root)) {
             throw new BadRequestException("Invalid object key");
         }
-        if (!Files.isRegularFile(resolved)) {
-            throw new ResourceNotFoundException("File not found");
-        }
-        try {
-            return Files.readAllBytes(resolved);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        return resolved;
     }
 }

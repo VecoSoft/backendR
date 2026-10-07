@@ -2,20 +2,20 @@ package com.bdreview.platform.adminconfig;
 
 import com.bdreview.platform.common.BadRequestException;
 import com.bdreview.platform.common.CurrentUser;
+import com.bdreview.platform.common.SharedCache;
 import com.bdreview.platform.moderation.AuditLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Admin-editable configuration documents (V65 {@code admin_config}): Commerce settings, Review
  * policy and Homepage curation. Each is read on hot paths (order sweep, review submit, homepage
- * search), so it is cached in-process for {@value #TTL_MS} ms and evicted on save. Saving needs a
+ * search), so it is cached in Redis (shared by every instance) for a minute and evicted on save. Saving needs a
  * reason and writes an audit entry with the before/after documents.
  */
 @Service
@@ -26,18 +26,19 @@ public class AdminConfigService {
     public static final String HOMEPAGE = "HOMEPAGE";
     public static final String RETENTION = "RETENTION";
 
-    private static final long TTL_MS = 5_000;
-
-    private record Cached(Object value, long loadedAt) {
-    }
+    private static final Duration TTL = Duration.ofSeconds(60);
+    /** Cached marker for "no row saved yet" (defaults apply). */
+    private static final String NONE = "-";
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final AuditLogService auditLogService;
-    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+    private final SharedCache cache;
 
-    public AdminConfigService(JdbcTemplate jdbc, ObjectMapper objectMapper, AuditLogService auditLogService) {
+    public AdminConfigService(JdbcTemplate jdbc, ObjectMapper objectMapper, AuditLogService auditLogService,
+                              SharedCache cache) {
         this.jdbc = jdbc;
+        this.cache = cache;
         this.objectMapper = objectMapper;
         this.auditLogService = auditLogService;
     }
@@ -127,7 +128,7 @@ public class AdminConfigService {
     }
 
     public void evict() {
-        cache.clear();
+        cache.evict(cacheKey(COMMERCE), cacheKey(REVIEW_POLICY), cacheKey(HOMEPAGE), cacheKey(RETENTION));
     }
 
     // -----------------------------------------------------------------
@@ -151,28 +152,23 @@ public class AdminConfigService {
                 INSERT INTO admin_config (section, settings, updated_by, updated_at) VALUES (?, ?::jsonb, ?, now())
                 ON CONFLICT (section) DO UPDATE SET settings = EXCLUDED.settings, updated_by = EXCLUDED.updated_by, updated_at = now()
                 """, section, json, CurrentUser.idOrNull());
-        cache.remove(section);
+        cache.evictAfterCommit(cacheKey(section));
     }
 
-    @SuppressWarnings("unchecked")
     private <T> T load(String section, Class<T> type) {
-        Cached cached = cache.get(section);
-        if (cached != null && System.currentTimeMillis() - cached.loadedAt() < TTL_MS) {
-            return copy((T) cached.value(), type);
-        }
-        List<String> rows = jdbc.queryForList("SELECT settings::text FROM admin_config WHERE section = ?", String.class, section);
-        T value;
+        String json = cache.get(cacheKey(section), TTL, () -> {
+            List<String> rows = jdbc.queryForList("SELECT settings::text FROM admin_config WHERE section = ?", String.class, section);
+            return rows.isEmpty() ? NONE : rows.get(0);
+        });
         try {
-            value = rows.isEmpty() ? type.getDeclaredConstructor().newInstance() : objectMapper.readValue(rows.get(0), type);
+            // Parsed per call, so callers always get their own instance to modify.
+            return NONE.equals(json) ? type.getDeclaredConstructor().newInstance() : objectMapper.readValue(json, type);
         } catch (Exception e) {
             throw new IllegalStateException("Unreadable admin_config " + section, e);
         }
-        cache.put(section, new Cached(value, System.currentTimeMillis()));
-        return copy(value, type);
     }
 
-    /** Callers get their own copy — the cached instance must never be mutated in place. */
-    private <T> T copy(T value, Class<T> type) {
-        return objectMapper.convertValue(value, type);
+    private static String cacheKey(String section) {
+        return "admin_config:" + section;
     }
 }
