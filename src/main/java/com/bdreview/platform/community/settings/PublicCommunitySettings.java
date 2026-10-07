@@ -52,6 +52,10 @@ public record PublicCommunitySettings(
                            boolean ownerChatEnabled,
                            boolean newSignupsEnabled,
                            boolean maintenanceMode,
-                           String maintenanceMessage) {
+                           String maintenanceMessage,
+                           // V70 sign-in methods: the login screen shows only what is on.
+                           boolean googleLoginEnabled,
+                           boolean passwordLoginEnabled,
+                           boolean phoneOtpEnabled) {
     }
 }

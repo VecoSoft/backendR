@@ -69,6 +69,7 @@ class BusinessQrConcurrencyTest {
 
         User owner = userRepository.save(User.builder()
                 .phoneNumber("+88019" + runSuffix)
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(UserRole.BUSINESS_OWNER)
                 .build());
         ownerUserId = owner.getId();

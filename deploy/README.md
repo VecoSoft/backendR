@@ -86,6 +86,8 @@ Every variable is explained in `.env.example`. You must fill in:
 | `JWT_SECRET` | output of `openssl rand -base64 48` |
 | `SPACES_KEY`, `SPACES_SECRET` | the Spaces key from step 0 |
 | `GEMINI_API_KEY` | Google AI Studio key (AI review summary, captions, fake-review LLM check) |
+| `GOOGLE_CLIENT_IDS` | Google Cloud → Credentials → OAuth client id (type Web; authorized JavaScript origins `https://jachai.com`, `https://www.jachai.com`). Add Android/iOS ids comma-separated later |
+| `EMAIL_PROVIDER` + `EMAIL_API_KEY` | `resend` and its API key (verify `jachai.com` in Resend: SPF/DKIM DNS records in Cloudflare). Or `smtp` + `SMTP_HOST/PORT/USER/PASS` |
 | `GOOGLE_MAPS_API_KEY` | optional: admin map picker; restrict the key to `api.jachai.com` |
 
 These are prefilled and normally stay as they are: `API_DOMAIN`, `CORS_ALLOWED_ORIGINS`,

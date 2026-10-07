@@ -56,7 +56,29 @@ public class NotificationTemplateService {
                 "ভেরিফিকেশন অনুরোধ অনুমোদিত হয়নি", "{businessName}-এর ভেরিফিকেশন অনুরোধ অনুমোদিত হয়নি: {reason}"),
         PHOTO_REJECTED("Photo rejected", List.of("photoType", "reason"),
                 "Your photo wasn't approved", "Your {photoType} wasn't approved by our moderators: {reason}",
-                "আপনার ছবি অনুমোদিত হয়নি", "আপনার {photoType} আমাদের মডারেটররা অনুমোদন করেননি: {reason}");
+                "আপনার ছবি অনুমোদিত হয়নি", "আপনার {photoType} আমাদের মডারেটররা অনুমোদন করেননি: {reason}"),
+        // V70 sign-in emails: the title is the e-mail subject, the body its text.
+        EMAIL_VERIFY_CODE("Email: verification code", List.of("name", "code", "minutes"),
+                "{code} is your Jachai verification code",
+                "Hi {name},\n\nYour Jachai verification code is {code}. It expires in {minutes} minutes.\n\n"
+                        + "If you didn't ask for this, you can ignore this email.",
+                "{code} আপনার জাচাই ভেরিফিকেশন কোড",
+                "হ্যালো {name},\n\nআপনার জাচাই ভেরিফিকেশন কোড {code}। কোডটি {minutes} মিনিটের মধ্যে ব্যবহার করুন।\n\n"
+                        + "আপনি অনুরোধ না করে থাকলে এই ইমেইলটি উপেক্ষা করুন।"),
+        EMAIL_RESET_CODE("Email: password reset code", List.of("name", "code", "minutes"),
+                "{code} is your Jachai password reset code",
+                "Hi {name},\n\nUse {code} to reset your Jachai password. It expires in {minutes} minutes.\n\n"
+                        + "If you didn't ask to reset your password, ignore this email — your password stays the same.",
+                "{code} আপনার জাচাই পাসওয়ার্ড রিসেট কোড",
+                "হ্যালো {name},\n\nজাচাই পাসওয়ার্ড রিসেট করতে {code} কোডটি ব্যবহার করুন। কোডটি {minutes} মিনিটের মধ্যে ব্যবহার করুন।\n\n"
+                        + "আপনি পাসওয়ার্ড রিসেটের অনুরোধ না করে থাকলে এই ইমেইলটি উপেক্ষা করুন — আপনার পাসওয়ার্ড বদলাবে না।"),
+        EMAIL_PASSWORD_CHANGED("Email: password changed", List.of("name", "email", "time"),
+                "Your Jachai password was changed",
+                "Hi {name},\n\nThe password for your Jachai account ({email}) was changed on {time}, and every device was signed out.\n\n"
+                        + "If this wasn't you, reset your password right away with \"Forgot password\" and contact Jachai support.",
+                "আপনার জাচাই পাসওয়ার্ড পরিবর্তন করা হয়েছে",
+                "হ্যালো {name},\n\n{time}-এ আপনার জাচাই অ্যাকাউন্টের ({email}) পাসওয়ার্ড পরিবর্তন করা হয়েছে এবং সব ডিভাইস থেকে সাইন আউট করা হয়েছে।\n\n"
+                        + "এটি আপনি না করে থাকলে এখনই \"পাসওয়ার্ড ভুলে গেছেন\" দিয়ে পাসওয়ার্ড রিসেট করুন এবং জাচাই সাপোর্টে যোগাযোগ করুন।");
 
         private final String label;
         private final List<String> variables;
@@ -145,6 +167,11 @@ public class NotificationTemplateService {
                 case "restriction" -> "You've been muted in the community";
                 case "until" -> "12 Oct 2026, 6:00 PM";
                 case "photoType" -> "cover photo";
+                case "name" -> "Nusrat";
+                case "code" -> "482913";
+                case "minutes" -> "10";
+                case "email" -> "nusrat@example.com";
+                case "time" -> "7 Oct 2026, 9:15 PM";
                 default -> v;
             });
         }

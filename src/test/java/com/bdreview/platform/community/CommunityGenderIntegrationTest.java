@@ -63,6 +63,7 @@ class CommunityGenderIntegrationTest {
     private User saveUser(String communityUsername, String gender) {
         return userRepository.save(User.builder()
                 .phoneNumber("+8801" + suffix().substring(0, 8) + (int) (Math.random() * 10))
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(UserRole.CONSUMER)
                 .name("Gender tester")
                 .otpVerified(true)

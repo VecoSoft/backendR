@@ -68,7 +68,7 @@ public class BusinessOrder {
     @Column(name = "customer_name_snapshot", nullable = false, length = 120)
     private String customerNameSnapshot;
 
-    @Column(name = "customer_phone_snapshot", nullable = false, length = 20)
+    @Column(name = "customer_phone_snapshot", length = 20)
     private String customerPhoneSnapshot;
 
     @Column(name = "delivery_address", columnDefinition = "text")

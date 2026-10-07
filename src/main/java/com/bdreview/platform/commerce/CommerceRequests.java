@@ -59,7 +59,6 @@ public final class CommerceRequests {
             @NotNull FulfillmentType fulfillmentType,
             @NotNull PaymentMethod paymentMethod,
             @NotBlank @Size(max = 120) String customerName,
-            @NotBlank @Size(max = 20) String customerPhone,
             @Size(max = 500) String deliveryAddress,
             @DecimalMin("-90.0") @DecimalMax("90.0") Double deliveryLat,
             @DecimalMin("-180.0") @DecimalMax("180.0") Double deliveryLng,
@@ -90,7 +89,6 @@ public final class CommerceRequests {
             @NotNull LocalDate preferredDate,
             @NotNull LocalTime preferredTime,
             @NotBlank @Size(max = 120) String customerName,
-            @NotBlank @Size(max = 20) String customerPhone,
             @Size(max = 500) String customerNote
     ) {
     }

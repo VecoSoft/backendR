@@ -29,6 +29,8 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final SmsGatewayService smsGatewayService;
+    /** Setter-injected (optional) so unit tests can build the service without the flag store. */
+    private com.bdreview.platform.features.FeatureFlagService features;
 
     public NotificationService(NotificationRepository notificationRepository,
                                 UserRepository userRepository,
@@ -36,6 +38,25 @@ public class NotificationService {
         this.notificationRepository = notificationRepository;
         this.userRepository = userRepository;
         this.smsGatewayService = smsGatewayService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFeatures(com.bdreview.platform.features.FeatureFlagService features) {
+        this.features = features;
+    }
+
+    /**
+     * V70: the app no longer collects phone numbers and SMS is off (PHONE_OTP flag), so an SMS
+     * notification is kept as an in-app one instead of being lost: whenever SMS is off or the
+     * recipient has no phone number.
+     */
+    private NotificationChannel effectiveChannel(UUID recipientUserId, NotificationChannel requested) {
+        if (requested != NotificationChannel.SMS) {
+            return requested;
+        }
+        boolean smsOn = features != null && features.isEnabled(com.bdreview.platform.features.PlatformFeature.PHONE_OTP);
+        boolean hasPhone = userRepository.findById(recipientUserId).map(u -> u.getPhoneNumber() != null).orElse(false);
+        return smsOn && hasPhone ? NotificationChannel.SMS : NotificationChannel.IN_APP;
     }
 
     /** Persists the notification, then attempts delivery immediately (IN_APP has no delivery step to attempt). */
@@ -49,7 +70,7 @@ public class NotificationService {
                 .body(body)
                 .relatedEntityType(relatedEntityType)
                 .relatedEntityId(relatedEntityId)
-                .channel(channel)
+                .channel(effectiveChannel(recipientUserId, channel))
                 .build());
 
         deliver(notification);

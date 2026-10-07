@@ -88,6 +88,16 @@ services:
       SPACES_KEY: ${SPACES_KEY:?set SPACES_KEY in .env}
       SPACES_SECRET: ${SPACES_SECRET:?set SPACES_SECRET in .env}
       SPACES_KEY_PREFIX: ${SPACES_KEY_PREFIX:-}
+      # Sign-in (V70): Google Sign-In client ids and outgoing e-mail (codes, notices).
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:?set GOOGLE_CLIENT_IDS in .env}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:?set EMAIL_PROVIDER in .env (smtp or resend)}
+      EMAIL_FROM: ${EMAIL_FROM:-Jachai <noreply@jachai.com>}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_API_KEY: ${EMAIL_API_KEY:-}
       RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
     depends_on:
       redis:

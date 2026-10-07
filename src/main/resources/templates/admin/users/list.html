@@ -22,7 +22,7 @@
     <div th:replace="~{admin/fragments/parts :: alerts}"></div>
 
     <form th:action="@{/admin/users}" method="get" class="admin-toolbar">
-        <input type="text" name="query" th:value="${query}" class="form-control form-control-sm" style="max-width:260px;" placeholder="Search name or phone"/>
+        <input type="text" name="query" th:value="${query}" class="form-control form-control-sm" style="max-width:260px;" placeholder="Search name, e-mail or phone"/>
         <select name="role" class="form-select form-select-sm" style="max-width:180px;">
             <option value="">All roles</option>
             <option th:each="r : ${roles}" th:value="${r}" th:text="${r}" th:selected="${r == role}"></option>
@@ -38,7 +38,7 @@
         <table class="admin-table">
             <thead>
             <tr>
-                <th>Phone</th>
+                <th>E-mail</th>
                 <th>Name</th>
                 <th>Role</th>
                 <th>Status</th>
@@ -50,7 +50,7 @@
             </thead>
             <tbody>
             <tr th:each="u : ${results.content}">
-                <td class="text-mono" th:text="${u.phoneNumber}">-</td>
+                <td class="text-mono small" th:text="${u.email != null ? u.email : (u.authProvider.name() == 'PHONE' or u.role.name() == 'ADMIN' ? u.phoneNumber : '—')}">-</td>
                 <td th:text="${u.name} ?: '—'">-</td>
                 <td><span class="badge" th:classappend="'badge-role-' + ${u.role}" th:text="${u.role}">-</span></td>
                 <td th:with="st=${accountStatus[u.id] ?: 'ACTIVE'}">

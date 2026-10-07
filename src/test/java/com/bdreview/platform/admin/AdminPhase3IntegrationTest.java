@@ -472,6 +472,7 @@ class AdminPhase3IntegrationTest {
     private User saveUser(UserRole role, String communityUsername) {
         return userRepository.save(User.builder()
                 .phoneNumber("+8801" + suffix().substring(0, 8) + (int) (Math.random() * 10))
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(role)
                 .name(role + " P3 tester")
                 .otpVerified(true)

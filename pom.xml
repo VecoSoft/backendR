@@ -111,6 +111,18 @@
             <version>${awssdk.version}</version>
         </dependency>
 
+        <!-- SMTP email provider (EMAIL_PROVIDER=smtp); JavaMailSender is built by SmtpEmailProvider, not auto-configured -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!-- Google ID token verification (Google's JWKS, RS256) via Nimbus JOSE -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
+
         <!-- /actuator/health liveness + readiness probes for Docker / load balancers -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

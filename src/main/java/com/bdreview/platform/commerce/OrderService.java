@@ -101,8 +101,19 @@ public class OrderService {
     // ================================================================
     // Placement
     // ================================================================
+    /** V70: ordering needs a verified e-mail (setter-injected so unit tests may skip it). */
+    private com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setVerifiedAccount(com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount) {
+        this.verifiedAccount = verifiedAccount;
+    }
+
     @Transactional
     public OrderResponse placeOrder(UUID customerUserId, UUID businessId, PlaceOrderRequest req) {
+        if (verifiedAccount != null) {
+            verifiedAccount.requireVerifiedEmail(customerUserId);
+        }
         Business business = guard.getLiveOrThrow(businessId);
         BusinessCommerceSettings settings = settingsService.requireOrderingLive(businessId);
 
@@ -220,7 +231,6 @@ public class OrderService {
                 .paymentMethod(req.paymentMethod())
                 .paymentStatus(PaymentStatus.UNPAID)
                 .customerNameSnapshot(req.customerName().trim())
-                .customerPhoneSnapshot(req.customerPhone().trim())
                 .deliveryAddress(deliveryAddress)
                 .deliveryLocation(deliveryLocation)
                 .deliveryDistanceKm(deliveryDistanceKm)
@@ -441,7 +451,7 @@ public class OrderService {
                 o.getCustomerUserId(), o.getStatus(), o.getFulfillmentType(),
                 o.getSubtotal(), o.getDeliveryFee(), o.getDiscountAmount(), o.getTotalAmount(),
                 o.getPaymentMethod(), o.getPaymentStatus(),
-                o.getCustomerNameSnapshot(), o.getCustomerPhoneSnapshot(),
+                o.getCustomerNameSnapshot(),
                 o.getDeliveryAddress(), lat, lng, o.getDeliveryDistanceKm(),
                 o.getCustomerNote(), o.getRejectionReason(), o.getEstimatedReadyAt(), o.getCreatedAt(),
                 items.stream().map(OrderItemResponse::from).toList(),

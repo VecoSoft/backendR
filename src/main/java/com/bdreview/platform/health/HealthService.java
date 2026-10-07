@@ -64,7 +64,8 @@ public class HealthService {
                          ObjectProvider<CommunityRestrictionExpiryJob> restrictions, ObjectProvider<PromoExpiryJob> promo,
                          ObjectProvider<BroadcastService> broadcasts, ObjectProvider<DataRetentionJob> retention,
                          @Value("${retention.cron}") String retentionCron,
-                         ObjectProvider<com.bdreview.platform.gallery.ObjectStorageClient> storageClient) {
+                         ObjectProvider<com.bdreview.platform.gallery.ObjectStorageClient> storageClient,
+                         ObjectProvider<com.bdreview.platform.auth.UnverifiedAccountCleanupJob> unverifiedCleanup) {
         this.storageClient = storageClient;
         this.jdbc = jdbc;
         this.redis = redis;
@@ -86,7 +87,10 @@ public class HealthService {
                         () -> broadcasts.getObject().dispatchDue()),
                 new Job(DataRetentionJob.JOB_NAME, "Data retention (delete old logs and deleted content)",
                         "cron " + retentionCron + " (Dhaka)", Duration.ofDays(1), true,
-                        () -> retention.getObject().run()));
+                        () -> retention.getObject().run()),
+                new Job(com.bdreview.platform.auth.UnverifiedAccountCleanupJob.JOB_NAME,
+                        "Delete e-mail sign-ups never verified (7 days)", "every 6 h", Duration.ofHours(6), true,
+                        () -> unverifiedCleanup.getObject().run()));
     }
 
     // ---------------------------------------------------------------- status cards

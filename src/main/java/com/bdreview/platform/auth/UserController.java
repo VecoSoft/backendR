@@ -2,6 +2,7 @@ package com.bdreview.platform.auth;
 
 import com.bdreview.platform.common.CurrentUser;
 import com.bdreview.platform.gallery.PreSignedUploadResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -11,9 +12,11 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final AuthService authService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, AuthService authService) {
         this.userService = userService;
+        this.authService = authService;
     }
 
     @GetMapping
@@ -41,5 +44,27 @@ public class UserController {
     @PutMapping("/community-avatar")
     public ResponseEntity<UserProfileDto> updateCommunityAvatar(@RequestBody UpdateCommunityAvatarRequest request) {
         return ResponseEntity.ok(userService.updateCommunityAvatar(CurrentUser.id(), request.communityAvatarUrl()));
+    }
+
+    // ---- V70: phone-only accounts add an e-mail (or link Google) so they can keep signing in ----
+
+    /** Sets the password now and e-mails a code to the new address (202). */
+    @PostMapping("/email")
+    public ResponseEntity<AuthService.VerificationPending> addEmail(@Valid @RequestBody AuthRequests.AddEmailRequest request,
+                                                                   HttpServletRequest http) {
+        return ResponseEntity.accepted().body(authService.startAddEmail(CurrentUser.id(), request.email(),
+                request.password(), request.confirmPassword(), http.getRemoteAddr()));
+    }
+
+    @PostMapping("/email/verify")
+    public ResponseEntity<UserProfileDto> verifyAddedEmail(@Valid @RequestBody AuthRequests.EmailCodeRequest request) {
+        authService.confirmAddEmail(CurrentUser.id(), request.email(), request.code());
+        return ResponseEntity.ok(userService.getProfile(CurrentUser.id()));
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<UserProfileDto> linkGoogle(@Valid @RequestBody AuthRequests.LinkGoogleRequest request) {
+        authService.linkGoogleToCurrent(CurrentUser.id(), request.idToken());
+        return ResponseEntity.ok(userService.getProfile(CurrentUser.id()));
     }
 }

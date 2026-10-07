@@ -16,9 +16,41 @@ public class User {
     @GeneratedValue
     private UUID id;
 
-    /** E.164 normalized everywhere before storage or comparison (spec §5). */
-    @Column(name = "phone_number", nullable = false, unique = true, length = 20)
+    /**
+     * E.164 normalized. Since V70 only admin-panel accounts (phone + password + TOTP) and accounts
+     * created before V70 have one: the app no longer collects or shows phone numbers.
+     */
+    @Column(name = "phone_number", length = 20)
     private String phoneNumber;
+
+    /** V70: sign-in email, stored trimmed + lowercased; unique case-insensitively. Null for phone-only legacy accounts. */
+    @Column(length = 254)
+    private String email;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    /** V70: Google account id (the ID token's {@code sub}), set on the first Google sign-in. */
+    @Column(name = "google_sub")
+    private String googleSub;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false, length = 10)
+    private AuthProvider authProvider = AuthProvider.PHONE;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false, length = 20)
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+
+    /** Password-login lockout (V70): consecutive failures, and the lock set after the 5th. */
+    @Builder.Default
+    @Column(name = "failed_login_count", nullable = false)
+    private int failedLoginCount = 0;
+
+    @Column(name = "login_locked_until")
+    private Instant loginLockedUntil;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

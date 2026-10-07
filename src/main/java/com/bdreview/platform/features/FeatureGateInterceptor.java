@@ -33,7 +33,7 @@ public class FeatureGateInterceptor implements WebMvcConfigurer, HandlerIntercep
     /** Always reachable, even in maintenance mode. */
     private static final List<String> MAINTENANCE_EXEMPT = List.of(
             "/api/v1/admin/**",
-            "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
+            "/api/v1/auth/login", "/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout",
             "/api/v1/community/settings",
             "/api/v1/storage/**");
 
@@ -49,7 +49,12 @@ public class FeatureGateInterceptor implements WebMvcConfigurer, HandlerIntercep
             PlatformFeature.COMMUNITY, List.of("/api/v1/community", "/api/v1/community/**"),
             PlatformFeature.PROMOTIONS, List.of("/api/v1/promo/**"),
             PlatformFeature.OWNER_CHAT, List.of("/api/v1/messages", "/api/v1/messages/**"),
-            PlatformFeature.NEW_SIGNUPS, List.of("POST /api/v1/auth/register", "POST /api/v1/auth/register-business"));
+            PlatformFeature.NEW_SIGNUPS, List.of("POST /api/v1/auth/register", "POST /api/v1/auth/register-business"),
+            PlatformFeature.GOOGLE_LOGIN, List.of("POST /api/v1/auth/google", "POST /api/v1/users/me/google"),
+            PlatformFeature.PASSWORD_LOGIN, List.of("POST /api/v1/auth/login", "POST /api/v1/auth/register",
+                    "POST /api/v1/auth/verify-email", "POST /api/v1/auth/resend-verification",
+                    "POST /api/v1/auth/forgot-password", "POST /api/v1/auth/reset-password"),
+            PlatformFeature.PHONE_OTP, List.of("/api/v1/claims/phone/**"));
 
     /** Still served while their feature is off — the app needs them to know the feature is off. */
     private static final List<String> GATE_EXEMPT = List.of(

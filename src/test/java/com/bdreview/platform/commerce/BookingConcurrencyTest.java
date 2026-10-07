@@ -95,6 +95,7 @@ class BookingConcurrencyTest {
 
         User owner = userRepository.save(User.builder()
                 .phoneNumber("+88016" + runSuffix)
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(UserRole.BUSINESS_OWNER)
                 .build());
         ownerUserId = owner.getId();
@@ -138,6 +139,7 @@ class BookingConcurrencyTest {
 
         User customer = userRepository.save(User.builder()
                 .phoneNumber("+88018" + runSuffix)
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(UserRole.CONSUMER)
                 .build());
         customerUserId = customer.getId();
@@ -186,7 +188,7 @@ class BookingConcurrencyTest {
     @Test
     void onlyOneOfTwoSimultaneousBookingsForTheSameStaffAndSlotSucceeds() throws Exception {
         PlaceBookingRequest req = new PlaceBookingRequest(serviceId, staffId, targetDate, targetTime,
-                "Race Customer", "01711111111", null);
+                "Race Customer", null);
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);

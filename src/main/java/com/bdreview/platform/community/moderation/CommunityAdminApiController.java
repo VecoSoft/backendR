@@ -471,6 +471,7 @@ public class CommunityAdminApiController {
             m.put("userId", u.getId());
             m.put("name", u.getName());
             m.put("phoneNumber", u.getPhoneNumber());
+            m.put("email", u.getEmail());
             m.put("communityUsername", u.getCommunityUsername());
             m.put("accountType", u.getRole().name());
             return m;

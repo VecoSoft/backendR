@@ -31,6 +31,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Main-site login resolves against CONSUMER and ADMIN rows for a phone — never BUSINESS_OWNER (that has its own login surface). */
     List<User> findAllByPhoneNumberAndRoleIn(String phoneNumber, Collection<UserRole> roles);
 
+    // -----------------------------------------------------------------
+    // V70 sign-in: email (stored lowercased; unique case-insensitively) and Google account id.
+    // -----------------------------------------------------------------
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailNormalized(@Param("email") String email);
+
+    Optional<User> findByGoogleSub(String googleSub);
+
+    /** Email signups never verified within the grace period (deleted by UnverifiedAccountCleanupJob). */
+    @Query("SELECT u.id FROM User u WHERE u.accountStatus = com.bdreview.platform.auth.AccountStatus.EMAIL_UNVERIFIED AND u.createdAt < :before")
+    List<UUID> findUnverifiedCreatedBefore(@Param("before") java.time.Instant before, Pageable pageable);
+
     /** Batched "which of these business owners are still admin-placeholder accounts" — see BusinessService#claimedByOwner. */
     @Query("SELECT u.id FROM User u WHERE u.id IN :ids AND u.role = :role")
     List<UUID> findIdsByIdInAndRole(@Param("ids") Collection<UUID> ids, @Param("role") UserRole role);
@@ -53,7 +65,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             SELECT u FROM User u
             WHERE (:query IS NULL OR :query = ''
                    OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR u.phoneNumber LIKE CONCAT('%', :query, '%'))
+                   OR u.phoneNumber LIKE CONCAT('%', :query, '%')
+                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')))
               AND (:role IS NULL OR u.role = :role)
             """)
     Page<User> search(@Param("query") String query, @Param("role") UserRole role, Pageable pageable);
@@ -66,7 +79,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
             SELECT u FROM User u
             WHERE (:query IS NULL OR :query = ''
                    OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%'))
-                   OR u.phoneNumber LIKE CONCAT('%', :query, '%'))
+                   OR u.phoneNumber LIKE CONCAT('%', :query, '%')
+                   OR LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')))
               AND (:role IS NULL OR u.role = :role)
               AND (:status IS NULL
                    OR (:status = 'BANNED' AND EXISTS (SELECT 1 FROM UserRestriction r WHERE r.userId = u.id

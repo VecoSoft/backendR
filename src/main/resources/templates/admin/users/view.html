@@ -14,7 +14,7 @@
             <a th:href="@{/admin/users}" class="small text-decoration-none">← All users</a>
             <h1>
                 <span th:text="${user.name != null and !#strings.isEmpty(user.name) ? user.name : 'Unnamed user'}">Name</span>
-                <span class="text-muted fw-normal fs-5 text-mono ms-2" th:text="${user.phoneNumber}">+8801…</span>
+                <span class="text-muted fw-normal fs-5 text-mono ms-2" th:text="${user.email != null ? user.email : (user.authProvider.name() == 'PHONE' or user.role.name() == 'ADMIN' ? user.phoneNumber : '')}">name@example.com</span>
             </h1>
             <p class="mb-0">
                 <span class="badge" th:classappend="'badge-role-' + ${user.role}" th:text="${user.role}">CONSUMER</span>
@@ -48,14 +48,51 @@
             <div class="admin-form-section">
                 <h2>Profile</h2>
                 <dl class="row mb-0 small">
-                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${user.phoneNumber}">-</dd>
                     <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8" th:text="${user.name} ?: '—'">-</dd>
                     <dt class="col-sm-4 text-muted">Role</dt><dd class="col-sm-8"><span class="badge" th:classappend="'badge-role-' + ${user.role}" th:text="${user.role}">-</span></dd>
-                    <dt class="col-sm-4 text-muted">OTP verified</dt><dd class="col-sm-8" th:text="${user.otpVerified} ? 'Yes' : 'No'">-</dd>
+                    <dt class="col-sm-4 text-muted">E-mail</dt><dd class="col-sm-8 text-mono" th:text="${user.email} ?: '—'">-</dd>
+                    <dt class="col-sm-4 text-muted">E-mail verified</dt>
+                    <dd class="col-sm-8">
+                        <span th:if="${user.emailVerifiedAt != null}" class="badge text-bg-success" th:text="'Yes · ' + ${@fmt.dt(user.emailVerifiedAt)}">Yes</span>
+                        <span th:if="${user.email != null and user.emailVerifiedAt == null}" class="badge text-bg-warning">Not verified</span>
+                        <span th:if="${user.email == null}" class="text-muted">—</span>
+                    </dd>
+                    <dt class="col-sm-4 text-muted">Sign-in method</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge text-bg-light border" th:text="${user.authProvider.name() == 'PHONE' ? 'Phone (before e-mail login)' : (user.authProvider.name() == 'BOTH' ? 'Google + password' : (user.authProvider.name() == 'GOOGLE' ? 'Google' : 'E-mail + password'))}">Google</span>
+                        <span th:if="${user.accountStatus.name() == 'EMAIL_UNVERIFIED'}" class="badge text-bg-warning ms-1">Sign-up not verified</span>
+                        <span th:if="${loginLocked}" class="badge text-bg-danger ms-1"
+                              th:text="'Password login locked until ' + ${@fmt.dt(user.loginLockedUntil)}">Locked</span>
+                    </dd>
+                    <!-- Phone only for accounts from before the e-mail login, and admin-panel accounts. -->
+                    <th:block th:if="${user.phoneNumber != null and (user.authProvider.name() == 'PHONE' or user.role.name() == 'ADMIN')}">
+                        <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${user.phoneNumber}">-</dd>
+                    </th:block>
                     <dt class="col-sm-4 text-muted">Language</dt><dd class="col-sm-8" th:text="${user.preferredLanguage}">-</dd>
                     <dt class="col-sm-4 text-muted">Community</dt><dd class="col-sm-8" th:text="${user.communityUsername != null ? 'u/' + user.communityUsername : '—'}">-</dd>
                     <dt class="col-sm-4 text-muted">Joined</dt><dd class="col-sm-8" th:text="${@fmt.dt(user.createdAt)}">-</dd>
                 </dl>
+            </div>
+
+            <div class="admin-form-section" th:if="${user.role.name() != 'ADMIN' and (user.email == null or user.emailVerifiedAt == null)}">
+                <h2>Attach an e-mail</h2>
+                <p class="small text-muted">
+                    For a user who can't sign in (phone login is switched off). The address is saved unverified; the
+                    user then sets a password with <strong>Forgot password</strong> (the code verifies the address) or
+                    signs in with Google. Audited with your reason.
+                </p>
+                <form method="post" th:action="@{/admin/users/{id}/email(id=${user.id})}" class="row g-2">
+                    <div class="col-md-6">
+                        <input type="email" name="email" class="form-control form-control-sm" placeholder="name@example.com"
+                               required maxlength="254" th:value="${user.email}"/>
+                    </div>
+                    <div class="col-md-6">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason (required)" required maxlength="1000"/>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-sm btn-primary"><i class="bi bi-envelope-plus"></i> Attach e-mail</button>
+                    </div>
+                </form>
             </div>
 
             <div class="admin-form-section" th:if="${restriction != null}">

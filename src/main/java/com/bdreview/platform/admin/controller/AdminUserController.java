@@ -86,6 +86,7 @@ public class AdminUserController {
         model.addAttribute("tab", activityTab ? "activity" : "overview");
         model.addAttribute("ownedBusinesses", businessRepository.findByOwnerUserIdAndDeletedAtIsNull(id));
         model.addAttribute("restriction", accountControl.inEffect(id).orElse(null));
+        model.addAttribute("loginLocked", user.getLoginLockedUntil() != null && user.getLoginLockedUntil().isAfter(Instant.now()));
         model.addAttribute("restrictions", accountControl.history(id));
         model.addAttribute("logins", accountControl.recentLogins(id, 20));
         model.addAttribute("roles", UserRole.values());
@@ -134,6 +135,16 @@ public class AdminUserController {
         return act(id, ra, () -> {
             accountControl.lift(id, reason);
             return "Restriction lifted — the user can log in again.";
+        });
+    }
+
+    /** V70: attach an e-mail to a phone-only account that can no longer sign in (audited). */
+    @PostMapping("/{id}/email")
+    public String attachEmail(@PathVariable UUID id, @RequestParam(required = false) String email,
+                              @RequestParam(required = false) String reason, RedirectAttributes ra) {
+        return act(id, ra, () -> {
+            adminUserService.attachEmail(id, email, reason);
+            return "E-mail attached (unverified). The user can now use \"Forgot password\" with it, or sign in with Google.";
         });
     }
 

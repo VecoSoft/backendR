@@ -55,6 +55,7 @@ class CommunitySearchIntegrationTest {
     private User saveUser(String username, String realName) {
         return userRepository.save(User.builder()
                 .phoneNumber("+8801" + suffix().substring(0, 8) + (int) (Math.random() * 10))
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(UserRole.CONSUMER)
                 .name(realName)
                 .otpVerified(true)

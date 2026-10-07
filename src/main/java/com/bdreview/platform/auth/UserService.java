@@ -91,9 +91,16 @@ public class UserService {
     }
 
     private UserProfileDto toDto(User user) {
-        return new UserProfileDto(user.getId(), user.getPhoneNumber(), user.getRole(),
+        boolean linked = accountLinkService.isLinked(user.getId());
+        // A business account linked to a personal one is reached through the account switch and
+        // signs in through that personal account's e-mail, so it never needs one of its own.
+        boolean needsEmail = (user.getEmail() == null || user.getEmailVerifiedAt() == null)
+                && !(user.getRole() == UserRole.BUSINESS_OWNER && linked);
+        return new UserProfileDto(user.getId(), user.getRole(),
                 user.getName(), user.getProfilePhotoUrl(), user.getPreferredLanguage(),
-                accountLinkService.isLinked(user.getId()), user.getCommunityUsername(), user.getCommunityProfileId(),
-                user.getCommunityAvatarUrl(), user.getCommunityGender(), user.isCommunityGenderVisible());
+                linked, user.getCommunityUsername(), user.getCommunityProfileId(),
+                user.getCommunityAvatarUrl(), user.getCommunityGender(), user.isCommunityGenderVisible(),
+                user.getEmail(), user.getEmailVerifiedAt() != null, user.getAuthProvider(), user.getPasswordHash() != null,
+                user.getGoogleSub() != null, needsEmail);
     }
 }

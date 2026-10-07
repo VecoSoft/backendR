@@ -98,6 +98,25 @@ public class MessageService {
                 "Owners can only reply within an existing thread — use POST /messages/threads/{threadId}/reply");
     }
 
+    /**
+     * V70: the business reaches a customer through chat (the app no longer collects phone numbers).
+     * Opens, or creates, the thread between this business and a customer who has an order or booking
+     * with it; the caller (commerce) has already checked that relationship. Owner only.
+     */
+    @Transactional
+    public MessageThread openThreadAsOwner(UUID ownerUserId, UUID businessId, UUID consumerUserId) {
+        Business business = businessRepository.findById(businessId)
+                .filter(b -> !b.isDeleted())
+                .orElseThrow(() -> new ResourceNotFoundException("Business not found"));
+        if (!business.getOwnerUserId().equals(ownerUserId)) {
+            throw new ForbiddenException("Only the business owner can message this customer");
+        }
+        requireCanMessage(ownerUserId);
+        return threadRepository.findByConsumerUserIdAndBusinessId(consumerUserId, businessId)
+                .orElseGet(() -> threadRepository.save(MessageThread.builder()
+                        .consumerUserId(consumerUserId).businessId(businessId).build()));
+    }
+
     @Transactional
     public Message reply(UUID senderUserId, UUID threadId, String content) {
         MessageThread thread = threadRepository.findById(threadId)

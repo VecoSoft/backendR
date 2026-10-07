@@ -106,11 +106,55 @@ app:
   # Admin panel's business-location map picker (business-fields.html) — Maps JavaScript API + Geocoding API.
   google-maps-api-key: ${GOOGLE_MAPS_API_KEY:}
   otp:
+    # SMS codes for claiming a business by its listed phone (phone-otp flag, off). Phone login was removed in V70.
     ttl-minutes: 5
     max-attempts: 5
     resend-cooldown-seconds: 60
     max-requests-per-5-min: 3
     max-requests-per-hour: 5
+  # --- User sign-in (V70): Google Sign-In + email/password. The admin panel login is separate. ---
+  auth:
+    google:
+      # Every OAuth client id whose ID tokens are accepted (web, Android, iOS), comma-separated.
+      client-ids: ${GOOGLE_CLIENT_IDS:}
+      jwks-uri: https://www.googleapis.com/oauth2/v3/certs
+    password:
+      bcrypt-cost: 12
+    lockout:
+      # Per account: this many wrong passwords in a row lock password login for lock-minutes.
+      max-failures: 5
+      lock-minutes: 15
+    # Per client IP (Redis): password-login attempts per 15 minutes.
+    login-per-ip-per-15-min: ${AUTH_LOGIN_PER_IP_PER_15_MIN:30}
+    codes:
+      length: 6
+      verify-ttl-minutes: 30
+      reset-ttl-minutes: 10
+      max-attempts: 5
+      resend-cooldown-seconds: 60
+      # Per e-mail address, for each purpose.
+      max-per-hour: 5
+      # Per client IP: password-reset codes 5 an hour; sign-up / add-email codes more, because many
+      # mobile users in Bangladesh share one IP (carrier NAT).
+      max-reset-per-hour-per-ip: 5
+      max-per-hour-per-ip: 30
+    # Email signups never verified are deleted after this many days.
+    unverified-retention-days: 7
+    # Extra blocked (disposable) e-mail domains on top of the built-in list, comma-separated.
+    blocked-email-domains: ${AUTH_BLOCKED_EMAIL_DOMAINS:}
+  # --- Outgoing e-mail (verification/reset codes, notices) ---
+  email:
+    # log (development only: codes are written to the server log) | smtp | resend (HTTP API)
+    provider: ${EMAIL_PROVIDER:log}
+    from: ${EMAIL_FROM:Jachai <noreply@jachai.com>}
+    reply-to: ${EMAIL_REPLY_TO:}
+    smtp:
+      host: ${SMTP_HOST:}
+      port: ${SMTP_PORT:587}
+      username: ${SMTP_USER:}
+      password: ${SMTP_PASS:}
+    api-key: ${EMAIL_API_KEY:}
+    api-url: ${EMAIL_API_URL:https://api.resend.com/emails}
   review:
     edit-delete-window-hours: 72
   fake-review:
@@ -209,6 +253,13 @@ features:
     enabled: ${FEATURE_OWNER_CHAT_ENABLED:true}
   new-signups:
     enabled: ${FEATURE_NEW_SIGNUPS_ENABLED:true}
+  google-login:
+    enabled: ${FEATURE_GOOGLE_LOGIN_ENABLED:true}
+  password-login:
+    enabled: ${FEATURE_PASSWORD_LOGIN_ENABLED:true}
+  phone-otp:
+    # Claim a business by SMS code to its listed number. Phone login itself was removed in V70.
+    enabled: ${FEATURE_PHONE_OTP_ENABLED:false}
   maintenance-mode:
     # Site-wide 503 for everyone but admins (login + public settings stay up).
     enabled: ${FEATURE_MAINTENANCE_MODE_ENABLED:false}

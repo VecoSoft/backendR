@@ -53,7 +53,7 @@
                 <h2>Customer</h2>
                 <dl class="row small mb-0">
                     <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8" th:text="${booking.customerNameSnapshot}">-</dd>
-                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${booking.customerPhoneSnapshot}">-</dd>
+                    <th:block th:if="${booking.customerPhoneSnapshot != null}"><dt class="col-sm-4 text-muted">Phone (legacy)</dt><dd class="col-sm-8 text-mono" th:text="${booking.customerPhoneSnapshot}">-</dd></th:block>
                     <dt class="col-sm-4 text-muted">Account</dt>
                     <dd class="col-sm-8"><a th:if="${customer != null}" th:href="@{/admin/users/{id}(id=${customer.id})}" th:text="${customer.phoneNumber}">user</a></dd>
                 </dl>

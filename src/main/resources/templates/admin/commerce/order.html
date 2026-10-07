@@ -80,7 +80,7 @@
                 <h2>Customer</h2>
                 <dl class="row small mb-0">
                     <dt class="col-sm-4 text-muted">Name</dt><dd class="col-sm-8" th:text="${order.customerNameSnapshot}">-</dd>
-                    <dt class="col-sm-4 text-muted">Phone</dt><dd class="col-sm-8 text-mono" th:text="${order.customerPhoneSnapshot}">-</dd>
+                    <th:block th:if="${order.customerPhoneSnapshot != null}"><dt class="col-sm-4 text-muted">Phone (legacy)</dt><dd class="col-sm-8 text-mono" th:text="${order.customerPhoneSnapshot}">-</dd></th:block>
                     <dt class="col-sm-4 text-muted">Address</dt><dd class="col-sm-8" th:text="${order.deliveryAddress} ?: '—'">-</dd>
                     <dt class="col-sm-4 text-muted">Note</dt><dd class="col-sm-8" th:text="${order.customerNote} ?: '—'">-</dd>
                     <dt class="col-sm-4 text-muted">Account</dt>

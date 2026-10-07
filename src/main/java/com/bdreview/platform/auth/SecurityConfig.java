@@ -48,8 +48,8 @@ public class SecurityConfig {
                         // 500 on an admin page came back as a misleading JSON 401.
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR, jakarta.servlet.DispatcherType.FORWARD).permitAll()
                         .requestMatchers("/error").permitAll()
-                        // §6 OTP + §5 auth endpoints must be reachable before a token exists
-                        .requestMatchers("/api/v1/auth/**", "/api/v1/otp/**", "/actuator/health").permitAll()
+                        // §5 auth endpoints must be reachable before a token exists
+                        .requestMatchers("/api/v1/auth/**", "/actuator/health").permitAll()
                         // caller-specific reads must NOT fall under the public wildcard below —
                         // evaluated first since Spring Security takes the first matching rule
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/businesses/mine").authenticated()
@@ -133,8 +133,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    public PasswordEncoder passwordEncoder(@org.springframework.beans.factory.annotation.Value("${app.auth.password.bcrypt-cost:12}") int cost) {
+        // V70: cost 12. Older cost-10 hashes still verify and are re-hashed on the next app login.
+        return new BCryptPasswordEncoder(cost);
     }
 
     @Bean

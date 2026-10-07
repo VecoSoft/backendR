@@ -23,6 +23,12 @@ public enum PlatformFeature {
             "Customers messaging businesses and the owner inbox."),
     NEW_SIGNUPS("new-signups", true, "New sign-ups",
             "Creating new consumer and business accounts. Existing users can still log in."),
+    GOOGLE_LOGIN("google-login", true, "Google sign-in",
+            "\"Continue with Google\" on the app (sign in, sign up and linking Google to an account)."),
+    PASSWORD_LOGIN("password-login", true, "Email + password sign-in",
+            "Email/password sign-up, login, e-mail verification and forgot-password on the app."),
+    PHONE_OTP("phone-otp", false, "Claim by SMS code",
+            "Claiming a business with an SMS code sent to its listed number. Phone login was removed (V70); off: only e-mail and document claims."),
     MAINTENANCE_MODE("maintenance-mode", false, "Maintenance mode",
             "Site-wide: every API call except login and the public settings answers 503 with the message below. Admins are not affected.");
 

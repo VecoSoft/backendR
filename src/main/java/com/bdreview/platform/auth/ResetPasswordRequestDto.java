@@ -1,12 +1,11 @@
 package com.bdreview.platform.auth;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-/** {@code role} disambiguates which account to reset — a phone number can now back both a CONSUMER and a BUSINESS_OWNER row (see V17 migration). */
+/** Sets a new password with the 6-digit code from the forgot-password e-mail. */
 public record ResetPasswordRequestDto(
-        @NotBlank String phoneNumber,
-        @NotBlank String code,
-        @NotBlank String newPassword,
-        @NotNull UserRole role) {
+        @Size(max = 320) String email,
+        @Size(max = 20) String code,
+        @Size(max = 200) String password,
+        @Size(max = 200) String confirmPassword) {
 }

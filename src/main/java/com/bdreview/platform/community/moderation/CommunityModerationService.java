@@ -843,6 +843,7 @@ public class CommunityModerationService {
         identity.put("userId", user.getId());
         identity.put("name", user.getName());
         identity.put("phoneNumber", user.getPhoneNumber());
+        identity.put("email", user.getEmail());
         identity.put("accountType", user.getRole().name());
         identity.put("accountCreatedAt", user.getCreatedAt());
         auditLogService.record("COMMUNITY_USER", userId, "IDENTITY_REVEALED", why, null,

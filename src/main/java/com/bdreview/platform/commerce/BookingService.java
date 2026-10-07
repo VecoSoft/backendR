@@ -110,7 +110,18 @@ public class BookingService {
         return adminConfig != null ? adminConfig.commerce() : new com.bdreview.platform.adminconfig.CommerceConfig();
     }
 
+    /** V70: booking needs a verified e-mail (setter-injected so unit tests may skip it). */
+    private com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setVerifiedAccount(com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount) {
+        this.verifiedAccount = verifiedAccount;
+    }
+
     public BookingResponse placeBooking(UUID customerUserId, UUID businessId, PlaceBookingRequest req) {
+        if (verifiedAccount != null) {
+            verifiedAccount.requireVerifiedEmail(customerUserId);
+        }
         Business business = guard.getLiveOrThrow(businessId);
         BusinessCommerceSettings settings = settingsService.requireBookingLive(businessId);
 
@@ -218,7 +229,6 @@ public class BookingService {
                 .slotEnd(slotEnd)
                 .autoConfirmed(autoConfirm)
                 .customerNameSnapshot(req.customerName().trim())
-                .customerPhoneSnapshot(req.customerPhone().trim())
                 .customerNote(blankToNull(req.customerNote()))
                 .build());
 
@@ -463,7 +473,7 @@ public class BookingService {
                 b.getId(), b.getBookingNumber(), b.getBusinessId(), business.getName(), business.getSlug(),
                 b.getCustomerUserId(), b.getStatus(), b.getServiceId(), b.getServiceNameSnapshot(),
                 b.getStaffId(), b.getStaffNameSnapshot(), b.getPreferredDate(), b.getPreferredTime(),
-                b.getCustomerNameSnapshot(), b.getCustomerPhoneSnapshot(), b.getCustomerNote(),
+                b.getCustomerNameSnapshot(), b.getCustomerNote(),
                 b.getRejectionReason(), b.getCreatedAt(), timeline, b.isAutoConfirmed(), b.getStartedAt());
     }
 

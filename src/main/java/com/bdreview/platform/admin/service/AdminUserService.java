@@ -23,10 +23,16 @@ public class AdminUserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.bdreview.platform.auth.CredentialPolicy credentialPolicy;
+    private final com.bdreview.platform.moderation.AuditLogService auditLogService;
 
-    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AdminUserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                            com.bdreview.platform.auth.CredentialPolicy credentialPolicy,
+                            com.bdreview.platform.moderation.AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.credentialPolicy = credentialPolicy;
+        this.auditLogService = auditLogService;
     }
 
     public Page<User> search(String query, UserRole role, String status, int page) {
@@ -66,6 +72,37 @@ public class AdminUserService {
         user.setPreferredLanguage(form.getPreferredLanguage());
         // V63: role changes go through AccountControlService.changeRole (reason + audit + session revoke).
         return userRepository.save(user);
+    }
+
+    /**
+     * V70: attaches an e-mail to an account that can't sign in any more (phone-only, from before the
+     * e-mail login). Stored unverified: the user proves it with "Forgot password" (the code verifies
+     * the address) or by signing in with Google. Reason required, audited with before/after.
+     */
+    @Transactional
+    public void attachEmail(UUID id, String rawEmail, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new BadRequestException("A reason is required.");
+        }
+        User user = get(id);
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new BadRequestException("Admin accounts sign in to the admin panel with their phone; no e-mail needed.");
+        }
+        String email;
+        try {
+            email = credentialPolicy.requireValidEmail(rawEmail);
+        } catch (com.bdreview.platform.common.CodedException e) {
+            throw new BadRequestException(e.getMessage());
+        }
+        userRepository.findByEmailNormalized(email).filter(other -> !other.getId().equals(id)).ifPresent(other -> {
+            throw new BadRequestException("Another account already uses this e-mail.");
+        });
+        String before = user.getEmail();
+        user.setEmail(email);
+        user.setEmailVerifiedAt(null);
+        userRepository.save(user);
+        auditLogService.record("USER", id, "EMAIL_ATTACHED", reason.trim(),
+                java.util.Collections.singletonMap("email", before), java.util.Map.of("email", email));
     }
 
     @Transactional

@@ -67,9 +67,25 @@ public class BusinessClaimService {
         otpService.requestOtp(business.getContactNumber());
     }
 
+    /** V70: claims need a verified e-mail (setter-injected so unit tests may skip it). */
+    private com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setVerifiedAccount(com.bdreview.platform.auth.VerifiedAccountGuard verifiedAccount) {
+        this.verifiedAccount = verifiedAccount;
+    }
+
+    private void requireVerifiedEmail(UUID userId) {
+        if (verifiedAccount != null) {
+            verifiedAccount.requireVerifiedEmail(userId);
+        }
+    }
+
+    /** Claim by SMS code to the business's listed number: only while the PHONE_OTP flag is on. */
     @Transactional
     public BusinessClaim verifyPhoneAndClaim(UUID claimantUserId, UUID businessId, String code) {
         CurrentUser.requireRole("BUSINESS_OWNER");
+        requireVerifiedEmail(claimantUserId);
         Business business = getBusinessOrThrow(businessId);
         ensureClaimable(business, claimantUserId);
         otpService.verifyCode(business.getContactNumber(), code);
@@ -87,6 +103,7 @@ public class BusinessClaimService {
     @Transactional
     public BusinessClaim verifyEmailAndClaim(UUID claimantUserId, UUID businessId, String email, String code) {
         CurrentUser.requireRole("BUSINESS_OWNER");
+        requireVerifiedEmail(claimantUserId);
         Business business = getBusinessOrThrow(businessId);
         ensureClaimable(business, claimantUserId);
         emailVerificationService.verifyCode(email, code);
@@ -131,6 +148,7 @@ public class BusinessClaimService {
     @Transactional
     public BusinessClaim fileClaim(UUID claimantUserId, FileClaimRequest request) {
         CurrentUser.requireRole("BUSINESS_OWNER");
+        requireVerifiedEmail(claimantUserId);
         if (request.verificationMethod() != VerificationMethod.DOCUMENT) {
             throw new BadRequestException("Use phone or email verification for an instant claim");
         }

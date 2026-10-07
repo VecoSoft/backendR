@@ -470,7 +470,7 @@ class AdminPhase1IntegrationTest {
 
         mvc.perform(post("/admin/users/" + member.getId() + "/ban").with(asAdmin).with(csrf()).param("reason", "Fraud"));
         MvcResult refused = mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("phoneNumber", member.getPhoneNumber(), "password", PASSWORD,
+                .content(objectMapper.writeValueAsString(Map.of("email", member.getEmail(), "password", PASSWORD,
                         "context", "BUSINESS_OWNER")))).andReturn();
         assertThat(refused.getResponse().getStatus()).isEqualTo(403);
         assertThat(objectMapper.readTree(refused.getResponse().getContentAsString()).get("code").asText()).isEqualTo("ACCOUNT_BANNED");
@@ -502,7 +502,7 @@ class AdminPhase1IntegrationTest {
                 new Probe("OWNER_CHAT", HttpMethod.GET, "/api/v1/messages/threads/mine", memberToken, null),
                 new Probe("OWNER_CHAT", HttpMethod.GET, "/api/v1/messages/threads/business-inbox", ownerToken, null),
                 new Probe("NEW_SIGNUPS", HttpMethod.POST, "/api/v1/auth/register", null,
-                        Map.of("phoneNumber", "01712345678", "code", "123456", "password", "password1", "role", "CONSUMER", "name", "X")));
+                        Map.of("name", "X", "email", "probe-" + suffix() + "@example.com", "password", "Probe-pass-77", "confirmPassword", "Probe-pass-77")));
 
         Map<String, String> publicKey = Map.of("ORDERING", "orderingEnabled", "BOOKINGS", "bookingsEnabled",
                 "COMMUNITY", "communityEnabled", "PROMOTIONS", "promotionsEnabled", "OWNER_CHAT", "ownerChatEnabled",
@@ -627,7 +627,7 @@ class AdminPhase1IntegrationTest {
 
     private MvcResult login(User u) throws Exception {
         return mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("phoneNumber", u.getPhoneNumber(), "password", PASSWORD)))).andReturn();
+                .content(objectMapper.writeValueAsString(Map.of("email", u.getEmail(), "password", PASSWORD)))).andReturn();
     }
 
     private String get200(String url, String token) throws Exception {
@@ -655,6 +655,7 @@ class AdminPhase1IntegrationTest {
     private User saveUser(UserRole role, String communityUsername, String staffRole) {
         return userRepository.save(User.builder()
                 .phoneNumber("+8801" + suffix().substring(0, 8) + (int) (Math.random() * 10))
+                .email(java.util.UUID.randomUUID() + "@it.jachai.test").emailVerifiedAt(java.time.Instant.now())
                 .role(role)
                 .name(role + " P1 tester")
                 .otpVerified(true)

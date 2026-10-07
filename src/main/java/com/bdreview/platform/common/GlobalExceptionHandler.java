@@ -81,6 +81,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
 
+    /** Errors the app acts on by code (auth flows: EMAIL_NOT_VERIFIED, ACCOUNT_LOCKED, ...). */
+    @ExceptionHandler(CodedException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleCoded(CodedException ex, HttpServletRequest req) {
+        java.util.Map<String, Object> body = errorBody(ex.status(), ex.getMessage(), req);
+        body.put("code", ex.code());
+        body.putAll(ex.details());
+        return ResponseEntity.status(ex.status()).body(body);
+    }
+
     private static java.util.Map<String, Object> errorBody(HttpStatus status, String message, HttpServletRequest req) {
         java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("timestamp", Instant.now());

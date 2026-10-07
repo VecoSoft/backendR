@@ -80,7 +80,10 @@ public class CommunitySettingsController {
                         flags.get(PlatformFeature.OWNER_CHAT),
                         flags.get(PlatformFeature.NEW_SIGNUPS),
                         flags.get(PlatformFeature.MAINTENANCE_MODE),
-                        flags.get(PlatformFeature.MAINTENANCE_MODE) ? featureFlagService.maintenanceMessage() : null),
+                        flags.get(PlatformFeature.MAINTENANCE_MODE) ? featureFlagService.maintenanceMessage() : null,
+                        flags.get(PlatformFeature.GOOGLE_LOGIN),
+                        flags.get(PlatformFeature.PASSWORD_LOGIN),
+                        flags.get(PlatformFeature.PHONE_OTP)),
                 announcementService.activeBanner().orElse(null));
         // Short browser cache only — admin changes must show up within seconds.
         return ResponseEntity.ok().cacheControl(CacheControl.noCache()).body(body);

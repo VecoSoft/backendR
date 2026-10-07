@@ -53,6 +53,16 @@ public class ProductionEnvironmentCheck implements ApplicationListener<Applicati
             p.add("COOKIE_SECURE must be true");
         }
         require(env, p, "ML_SERVICE_BASE_URL", "app.ml-service.base-url", v -> !v.contains("localhost"));
+        // V70 sign-in: codes and notices go out by e-mail, and Google tokens need the client ids.
+        String emailProvider = env.getProperty("app.email.provider", "log");
+        switch (emailProvider) {
+            case "smtp" -> require(env, p, "SMTP_HOST", "app.email.smtp.host", v -> !v.contains("localhost"));
+            case "resend" -> require(env, p, "EMAIL_API_KEY", "app.email.api-key", v -> true);
+            case "log" -> p.add("EMAIL_PROVIDER=log only writes e-mails to the log; use smtp or resend");
+            default -> p.add("EMAIL_PROVIDER must be smtp or resend");
+        }
+        require(env, p, "EMAIL_FROM", "app.email.from", v -> v.contains("@"));
+        require(env, p, "GOOGLE_CLIENT_IDS", "app.auth.google.client-ids", v -> v.contains(".apps.googleusercontent.com"));
         if ("true".equalsIgnoreCase(env.getProperty("app.admin.bootstrap-enabled"))) {
             require(env, p, "ADMIN_DEFAULT_PASSWORD", "app.admin.default-password", v -> v.length() >= 12 && !v.equals("12345678"));
         }
