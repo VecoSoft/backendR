@@ -10,3 +10,6 @@ Thumbs.db
 /uploads/
 deploy/.env
 deploy/.last-deploy
+
+# Local-only settings with secrets (Gmail app password etc.)
+/config/
